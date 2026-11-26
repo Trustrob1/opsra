@@ -130,7 +130,7 @@ def chat_info(db, org_id: str, catalog_config: Optional[dict]) -> Optional[dict]
             return None
         rows = (db.table("webchat_keys").select("key").eq("org_id", org_id).eq("active", True).limit(1).execute().data) or []
         key = rows[0].get("key") if rows else None
-        return {"key": key, "shop": bool(live.get("shop_enabled"))} if key else None
+        return {"key": key, "shop": bool(live.get("shop_enabled")), "goal": live.get("visitor_goal") or ""} if key else None   # CHIOMA-VOICE-1: goal feeds the greeting
     except Exception as exc:
         logger.warning("storefront chat_info failed org=%s: %s", org_id, exc)
         return None

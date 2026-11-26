@@ -47,8 +47,8 @@ def test_public_view_has_chioma_and_human_item():
 
 
 def test_new_default_greeting_leads_with_what_chioma_can_do():
-    g = wc.DEFAULT_CONFIG["greeting"]
-    assert "Chioma" in g and "prices" in g and "Menu at the top" not in g
+    g = wc.DEFAULT_CONFIG["greeting"]          # CHIOMA-VOICE-1: a warm welcome first, then what to do next
+    assert "Chioma" in g and g.startswith("{hello}, welcome to {business}") and "Menu at the top" not in g
 
 
 class _Q:

@@ -21,7 +21,7 @@ def test_item_page_swaps_whatsapp_for_chioma():
 def test_list_page_has_card_buttons_banner_and_help():
     s = _r(SF, "StorefrontListPage.jsx")
     assert "const quick = chioma ? null" in s                 # the storefront's own quick-add is hidden
-    for w in ("Buy now", "Choose size", "Ask Chioma", "Not sure which", "Speak to Chioma"):
+    for w in ("Buy now", "Choose size", "Ask Chioma", "Need help choosing", "Speak to Chioma"):   # STOREFRONT-3 renamed the help banner
         assert w in s, w
     assert "(waHelp || chioma)" in s
 

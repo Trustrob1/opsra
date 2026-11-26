@@ -53,12 +53,32 @@ export function viewingMessage(productId) {
   return pid ? { source: 'opsra-catalog', type: 'viewing', product: pid } : null
 }
 
-/** WEBCHAT-CATALOG-1c (BUBBLE-3): the one-line greeting above the button. On a product page it names the product. Fixed copy, no AI. */
-export function greetingText(orgName, productTitle) {
-  const t = String(productTitle ?? '').replace(/\s+/g, ' ').trim()
-  if (t) return `Questions about ${t.length > 40 ? `${t.slice(0, 39).trimEnd()}…` : t}? I can help.`
+/** CHIOMA-VOICE-1: how a person in the shop would say hello at this hour (the visitor's own clock). */
+export function helloWord(hour) {
+  const h = Number(hour)
+  if (h >= 5 && h < 12) return 'Good morning'
+  if (h >= 12 && h < 17) return 'Good afternoon'
+  if (h >= 17 && h < 24) return 'Good evening'
+  return 'Hello'
+}
+
+/** WEBCHAT-CATALOG-1c / CHIOMA-VOICE-1: the one-line greeting above the button, in a friendly shop-floor voice.
+ * Works for any business: its own name, what its visitors usually come for (`goal`, set in Settings), the time of day,
+ * a returning visitor, and the product on a product page. Fixed copy, no AI. Keep in step with chiomaGreeting() in public/widget.js. */
+export function greetingText(orgName, productTitle, opts = {}) {
+  const t = String(productTitle ?? '').replace(/\s+/g, ' ').trim().replace(/^the\s+/i, '')
+  if (t) return `Any questions about the ${t.length > 40 ? `${t.slice(0, 39).trimEnd()}…` : t}? I’m happy to help.`
   const n = String(orgName ?? '').replace(/\s+/g, ' ').trim().slice(0, 60)
-  return n ? `Hi, I’m Chioma. Ask me anything about ${n}.` : 'Hi, I’m Chioma. Ask me anything.'
+  const to = n ? ` to ${n}` : ''
+  if (opts.returning) return `Welcome back${to}! 😊 Anything I can help you with today?`
+  const goal = String(opts.goal ?? '').replace(/\s+/g, ' ').trim().slice(0, 40)
+  const hour = opts.hour ?? new Date().getHours()
+  return `${helloWord(hour)}, welcome${to}! Looking for ${goal || 'something'}, or just browsing?`
+}
+
+/** CHIOMA-VOICE-1: remembered across visits, so a second visit gets "Welcome back". */
+export function seenKey(chatKey) {
+  return `opsra_chioma_seen_${chatKey}`
 }
 
 /** Once per browser tab for each product (or the shop home), so the card is useful and never nags. */

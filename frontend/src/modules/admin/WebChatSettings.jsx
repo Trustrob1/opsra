@@ -138,8 +138,12 @@ export default function WebChatSettings() {
         <input id="wc-bn" style={input} value={cfg.business_name} maxLength={120} onChange={(e) => set('business_name', e.target.value)} />
         <label style={label} htmlFor="wc-ad">Address (so Chioma can answer "where are you")</label>
         <input id="wc-ad" style={input} value={cfg.address || ''} maxLength={200} onChange={(e) => set('address', e.target.value)} />
-        <label style={label} htmlFor="wc-gr">Greeting</label>
-        <textarea id="wc-gr" style={{ ...input, minHeight: 60 }} value={cfg.greeting} maxLength={400} onChange={(e) => set('greeting', e.target.value)} />
+        <label style={label} htmlFor="wc-goal">What do visitors usually come for?</label>
+        <input id="wc-goal" style={input} value={cfg.visitor_goal || ''} maxLength={40} placeholder="e.g. a new mattress, a hair appointment" onChange={(e) => set('visitor_goal', e.target.value)} aria-describedby="wc-goal-hint" />
+        <p id="wc-goal-hint" style={{ fontSize: 12, color: ds.gray, margin: '4px 0 0', fontFamily: ds.fontDm }}>Chioma's welcome on your website then reads: "Good morning, welcome to {cfg.business_name || 'your business'}! Looking for {cfg.visitor_goal || 'something'}, or just browsing?"</p>
+        <label style={label} htmlFor="wc-gr">Greeting (first message in the chat)</label>
+        <textarea id="wc-gr" style={{ ...input, minHeight: 60 }} value={cfg.greeting} maxLength={400} onChange={(e) => set('greeting', e.target.value)} aria-describedby="wc-gr-hint" />
+        <p id="wc-gr-hint" style={{ fontSize: 12, color: ds.gray, margin: '4px 0 0', fontFamily: ds.fontDm }}>{'{hello}'} becomes Good morning, Good afternoon or Good evening. {'{business}'} becomes your business name.</p>
         <LookPicker value={cfg.chat_theme} brand={cfg.brand_color} onChange={(v) => set('chat_theme', v)} />
         <label style={label} htmlFor="wc-col">Colour</label>
         <input id="wc-col" type="color" value={cfg.brand_color} onChange={(e) => set('brand_color', e.target.value)} style={{ width: 60, height: 36 }} />

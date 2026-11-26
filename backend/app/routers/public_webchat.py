@@ -186,7 +186,7 @@ def widget_info(key: str, request: Request, s: Optional[str] = Query(default=Non
         cfg = found["config"]
         from app.services import chat_pause_service as pause
         out = {"allowed": embed.origin_allowed(cfg.get("allowed_domains"), request.headers.get("origin")) and not pause.is_paused(db, found["org_id"]),
-               "business_name": cfg["business_name"], "brand_color": cfg["brand_color"], "side": cfg.get("widget_side", "right"),
+               "business_name": cfg["business_name"], "goal": cfg.get("visitor_goal") or "", "brand_color": cfg["brand_color"], "side": cfg.get("widget_side", "right"),
                "bar": wc.ask_bar_view(cfg, s), "chat_theme": cfg.get("chat_theme") if cfg.get("chat_theme") in wc.CHAT_THEMES else "classic", **_chioma_flags(cfg)}
     if out.get("allowed") and found:
         from urllib.parse import urlparse

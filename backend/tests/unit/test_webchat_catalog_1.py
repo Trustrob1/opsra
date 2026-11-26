@@ -41,9 +41,9 @@ def _live(monkeypatch, enabled=True, allowed=True):
 
 def test_chat_info_gives_the_key_when_everything_allows(monkeypatch):
     _live(monkeypatch)
-    assert sf.chat_info(_DB(), ORG, {}) == {"key": "wc_abcdefgh12", "shop": True}
-    assert sf.chat_info(_DB(), ORG, None) == {"key": "wc_abcdefgh12", "shop": True}              # default on
-    assert sf.chat_info(_DB(), ORG, {"chat_button": True}) == {"key": "wc_abcdefgh12", "shop": True}
+    assert sf.chat_info(_DB(), ORG, {}) == {"key": "wc_abcdefgh12", "shop": True, "goal": ""}
+    assert sf.chat_info(_DB(), ORG, None) == {"key": "wc_abcdefgh12", "shop": True, "goal": ""}              # default on
+    assert sf.chat_info(_DB(), ORG, {"chat_button": True}) == {"key": "wc_abcdefgh12", "shop": True, "goal": ""}
 
 
 def test_chat_info_off_cases(monkeypatch):
@@ -59,7 +59,7 @@ def test_chat_info_off_cases(monkeypatch):
 def test_chat_info_does_not_need_the_shop(monkeypatch):
     monkeypatch.setattr(wc, "get_config", lambda db, o: {"enabled": True, "shop_enabled": False})
     monkeypatch.setattr(plan, "apply", lambda db, o, c: dict(c))
-    assert sf.chat_info(_DB(), ORG, {}) == {"key": "wc_abcdefgh12", "shop": False}
+    assert sf.chat_info(_DB(), ORG, {}) == {"key": "wc_abcdefgh12", "shop": False, "goal": ""}
 
 
 def test_chat_info_never_raises(monkeypatch):
@@ -72,7 +72,7 @@ def test_public_extras_chat_only_on_storefront(monkeypatch):
     _live(monkeypatch)
     monkeypatch.setattr(sf, "shop_info", lambda db, o: None)
     monkeypatch.setattr(sf, "resolve_template", lambda db, o, c: "storefront")
-    assert sf.public_extras(_DB(), ORG, {})["chat"] == {"key": "wc_abcdefgh12", "shop": True}
+    assert sf.public_extras(_DB(), ORG, {})["chat"] == {"key": "wc_abcdefgh12", "shop": True, "goal": ""}
     monkeypatch.setattr(sf, "resolve_template", lambda db, o, c: "classic")
     assert sf.public_extras(_DB(), ORG, {})["chat"] is None
 

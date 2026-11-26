@@ -71,11 +71,20 @@
     name = String(name).replace(/\s+/g, ' ').trim()
     return name.length > 40 ? name.slice(0, 39).replace(/\s+$/, '') + '\u2026' : name
   }
-  var GREETING = {
-    home: 'Hi, I’m Chioma. Ask me anything about {n}.',
-    product: 'Questions about this item? I can help.',
-    cart: 'Need a hand with your order? I’m here.',
-    booking: 'Want to book? I can find a time for you.'
+  // CHIOMA-VOICE-1: what a friendly person in the shop would say. Built from each business's own name and what its visitors
+  // usually come for (set in Settings), the visitor's own clock and the page they are on. Fixed copy, no AI.
+  // Keep in step with greetingText() in frontend/src/catalog/storefront/storefrontChat.js.
+  function chiomaGreeting(o) {
+    var h = o.hour
+    var hello = h >= 5 && h < 12 ? 'Good morning' : h >= 12 && h < 17 ? 'Good afternoon' : h >= 17 ? 'Good evening' : 'Hello'
+    var n = String(o.name || '').replace(/\s+/g, ' ').trim().slice(0, 60)
+    var goal = String(o.goal || '').replace(/\s+/g, ' ').trim().slice(0, 40)
+    var prod = String(o.product || '').replace(/\s+/g, ' ').trim().replace(/^the\s+/i, '')
+    if (prod) return 'Any questions about the ' + prod + '? I\u2019m happy to help.'
+    if (o.hint === 'cart') return 'Need a hand with your order? I\u2019m right here.'
+    if (o.hint === 'booking') return 'Want to book a time? I can sort that out for you.'
+    if (o.returning) return 'Welcome back' + (n ? ' to ' + n : '') + '! \ud83d\ude0a Anything I can help you with today?'
+    return hello + ', welcome' + (n ? ' to ' + n : '') + '! Looking for ' + (goal || 'something') + ', or just browsing?'
   }
 
   function store(k, v) { try { if (v === undefined) return sessionStorage.getItem(k); sessionStorage.setItem(k, v) } catch (e) { /* storage can be blocked */ } return null }
@@ -210,7 +219,9 @@
       setTimeout(function () {
         if (isOpen || store('opsra_chioma_greeted_' + key)) return
         var prod = pageProduct()
-        root.querySelector('.ct').textContent = prod ? 'Questions about ' + prod + '? I can help.' : (GREETING[pageHint()] || GREETING.home).replace('{n}', name)
+        var back = lstore('opsra_chioma_seen_' + key) === '1'
+        root.querySelector('.ct').textContent = chiomaGreeting({ hour: new Date().getHours(), name: d.business_name, goal: d.goal, product: prod, hint: pageHint(), returning: back })
+        lstore('opsra_chioma_seen_' + key, '1')
         card.classList.add('in')
         store('opsra_chioma_greeted_' + key, '1')
       }, 4000)                                   // the same moment the label folds into the photo
@@ -276,7 +287,7 @@
         '.bar{' + (docked ? 'position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));width:min(460px,calc(100vw - 24px));box-shadow:0 12px 36px rgba(0,0,0,' + (P.dark ? '.5' : '.22') + ');' : 'position:relative;width:100%;max-width:640px;') +
         'border-radius:18px;padding:10px 12px 12px;background:' + P.surface + ';color:' + P.ink + ';border:1px solid ' + P.line + '}' +
         '.top{display:flex;align-items:center;justify-content:space-between;min-height:24px}' +
-        '.who{font-size:13px;font-weight:500;color:' + P.muted + '}' +
+        '.who{font-size:13px;font-weight:500;color:' + P.muted + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}' +
         '.min{width:44px;height:44px;margin:-10px -8px -10px 0;border:0;background:transparent;color:' + P.muted + ';font-size:24px;line-height:1;cursor:pointer;border-radius:50%}' +
         '.min:focus-visible,.go:focus-visible,.chip:focus-visible{outline:3px solid ' + brand + ';outline-offset:2px}' +
         'form{display:flex;align-items:center;gap:10px;background:' + P.field + ';border-radius:14px;padding:6px 6px 6px 8px;border:1px solid ' + P.fieldLine + '}' +
@@ -292,10 +303,10 @@
         '@media (prefers-reduced-motion:no-preference){.bar{animation:up .3s ease}@keyframes up{from{opacity:0;margin-top:8px}to{opacity:1;margin-top:0}}}' +
         '</style>' +
         '<div class="bar' + (online ? ' on' : '') + '" role="region" aria-label="Ask Chioma">' +
-        '<div class="top"><span class="who">Chioma' + (online ? ' · online now' : '') + '</span>' +
+        '<div class="top"><span class="who">Chioma' + (d.business_name ? ' from ' + esc(String(d.business_name).slice(0, 32)) : '') + (online ? ' · replies right away' : '') + '</span>' +
         '<button class="min" type="button" aria-label="Minimize Chioma to the corner">–</button></div>' +
         '<form><span class="av"><img alt="" width="40" height="40"><span class="dot"></span></span>' +
-        '<input type="text" maxlength="500" aria-label="Ask Chioma a question" placeholder="' + esc(bar.text || 'Ask me anything…') + '" autocomplete="off">' +
+        '<input type="text" maxlength="500" aria-label="Ask Chioma a question" placeholder="' + esc(bar.text || 'Type your question…') + '" autocomplete="off">' +
         '<button class="go" type="submit" aria-label="Ask"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button></form>' +
         (chips.length || bar.more ? '<div class="chips">' + chips.map(function (c) { return '<button class="chip' + (c.primary ? ' p' : '') + '" type="button" data-id="' + esc(c.id) + '">' + esc(c.label) + '</button>' }).join('') +
           (bar.more ? '<button class="chip m" type="button" data-more="1" aria-label="More options">More \u203a</button>' : '') + '</div>' : '') +

@@ -39,13 +39,15 @@ MENU_MAX = 12
 TOUCH_EVERY_S = 300
 
 CHAT_THEMES = ("classic", "blue", "midnight", "ink")
+VISITOR_GOAL_MAX = 40
 
 DEFAULT_CONFIG: dict = {
     "enabled": False,
     "business_name": "",
     "brand_color": "#028090",
     "chat_theme": "classic",      # WEB-ONLY-1c-LOOK: classic | blue | midnight | ink (the chat page colours; see frontend utils/webchatTheme.js)
-    "greeting": "Hi, I'm Chioma. I can answer your questions, share prices and help you order or book. Pick an option below, or type your question.",
+    "greeting": "{hello}, welcome to {business}! I'm Chioma 😊 What are you looking for today? Just type your question, or tap the menu at the top to see what I can help with.",   # CHIOMA-VOICE-1: {hello} = Good morning/afternoon/evening, {business} = the business name
+    "visitor_goal": "",           # CHIOMA-VOICE-1: what visitors usually come for ("a new mattress"); used in the bubble greeting
     "menu": [],
     "booking_fields": [
         {"key": "service", "label": "What would you like to book?", "required": True},
@@ -85,7 +87,7 @@ DEFAULT_CONFIG: dict = {
     "address": "",                # SMART-1: where the business is, so Chioma can answer "where are you" without AI
     "human_offer": False,         # HUMAN-OFFER-1: the first tap on Talk to the team gets one offer of a quick answer first
     "ask_bar": False,             # ASKBAR-1: show the Chioma ask bar on the website (inline at a placeholder, or docked at the bottom)
-    "ask_bar_text": "Ask me anything…",
+    "ask_bar_text": "Type your question…",   # CHIOMA-VOICE-1 (was "Ask me anything…")
     "campaigns": [],               # OPENING-CTA-2: one per ad: {tag, label, main, main_label, greeting}; a chat opened with ?s=<tag> gets that ad's greeting and starting button
     "opening": {"style": "list"},  # OPENING-CTA-1: list = every button on the first screen (as before); pair = two big buttons (one main action + Speak to Chioma)
     "call_enabled": False,        # WEBCHAT-CALL-1: phone icon in the chat header; calls only in business hours
@@ -93,8 +95,10 @@ DEFAULT_CONFIG: dict = {
 }
 # WEBCHAT-UI-3: the old default wording pointed at buttons under the message; the menu is now an icon at the top
 _LEGACY_TEXT = {
-    "greeting": {"Hi! How can we help you today? Pick an option below or type your question.": "Hi, I'm Chioma. I can answer your questions, share prices and help you order or book. Pick an option below, or type your question.",
-                 "Hi! How can we help you today? Pick an option below, or tap Menu at the top any time.": "Hi, I'm Chioma. I can answer your questions, share prices and help you order or book. Pick an option below, or type your question."},
+    "greeting": {"Hi! How can we help you today? Pick an option below or type your question.": DEFAULT_CONFIG["greeting"],
+                 "Hi! How can we help you today? Pick an option below, or tap Menu at the top any time.": DEFAULT_CONFIG["greeting"],
+                 "Hi, I'm Chioma. I can answer your questions, share prices and help you order or book. Pick an option below, or type your question.": DEFAULT_CONFIG["greeting"]},   # CHIOMA-VOICE-1
+    "ask_bar_text": {"Ask me anything…": DEFAULT_CONFIG["ask_bar_text"], "Ask me anything...": DEFAULT_CONFIG["ask_bar_text"]},
     "fallback": {"I did not catch that. Pick one of the options below, or tap Talk to us.": "I am unable to answer that at the moment. Please tap Menu at the top to see the available options, or tap Talk to the team to speak with someone on our team.",
                  "I did not catch that. Tap Menu at the top to see what we can help with, or type your question again.": "I am unable to answer that at the moment. Please tap Menu at the top to see the available options, or tap Talk to the team to speak with someone on our team."},
 }
@@ -225,6 +229,8 @@ def sanitise_config(raw: dict) -> dict:
         out["site_button"] = bool(raw["site_button"])
     if "address" in raw:
         out["address"] = _clean_text(raw["address"], 200)
+    if "visitor_goal" in raw:                      # CHIOMA-VOICE-1
+        out["visitor_goal"] = _clean_text(re.sub(r"\s+", " ", str(raw["visitor_goal"] or "")), VISITOR_GOAL_MAX)
     if "human_offer" in raw:
         out["human_offer"] = bool(raw["human_offer"])
     if "ask_bar" in raw:
@@ -455,9 +461,38 @@ def ad_shortcuts(cfg: dict, source=None) -> list:
     return out[:SHORTCUTS_MAX]
 
 
+def hello_word(hour: int) -> str:
+    """CHIOMA-VOICE-1: how a person in the shop would say hello at this hour."""
+    if 5 <= hour < 12:
+        return "Good morning"
+    if 12 <= hour < 17:
+        return "Good afternoon"
+    if 17 <= hour < 24:
+        return "Good evening"
+    return "Hello"
+
+
+def _local_hour(cfg: dict) -> int:
+    tz = ((cfg.get("_call_org") or {}).get("timezone")) or "Africa/Lagos"
+    try:
+        from zoneinfo import ZoneInfo
+        return datetime.now(ZoneInfo(tz)).hour
+    except Exception:
+        return (datetime.now(timezone.utc).hour + 1) % 24          # Lagos time when the zone name is unusable
+
+
+def fill_greeting(text: str, cfg: dict, hour: Optional[int] = None) -> str:
+    """CHIOMA-VOICE-1: {hello} and {business} in any greeting become the right words for this business, now."""
+    t = str(text or "")
+    if "{" not in t:
+        return t
+    h = _local_hour(cfg) if hour is None else hour
+    return t.replace("{hello}", hello_word(h)).replace("{business}", str(cfg.get("business_name") or "us"))
+
+
 def greeting_for(cfg: dict, source=None) -> str:
     c = campaign_for(cfg, source)
-    return (c or {}).get("greeting") or cfg["greeting"]
+    return fill_greeting((c or {}).get("greeting") or cfg["greeting"], cfg)
 
 
 def opening_for(cfg: dict, source=None) -> dict:

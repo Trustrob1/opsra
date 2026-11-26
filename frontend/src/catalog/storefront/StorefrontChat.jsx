@@ -8,17 +8,18 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { readableOn } from './storefrontLogic'
-import { chatSrc, cleanProductId, cleanVariantId, viewingMessage, buyMessage, greetingText, greetedKey, CHIOMA_EVENT } from './storefrontChat'
+import { chatSrc, cleanProductId, cleanVariantId, viewingMessage, buyMessage, greetingText, greetedKey, seenKey, CHIOMA_EVENT } from './storefrontChat'
 
 const FACE = '/chioma/chioma-face-64.webp'
 const FACE2 = '/chioma/chioma-face-128.webp'
 
-export default function StorefrontChat({ chatKey, accent, orgName, productId, productTitle }) {
+export default function StorefrontChat({ chatKey, accent, orgName, goal, productId, productTitle }) {
   const [open, setOpen] = useState(false)
   const [everOpened, setEverOpened] = useState(false)
   const [folded, setFolded] = useState(false)
   const [src, setSrc] = useState('')
-  const [cardFor, setCardFor] = useState('')   // the greeted-key the card is showing for; it hides on its own when the product changes
+  const [cardFor, setCardFor] = useState('')
+  const [returning, setReturning] = useState(false)   // CHIOMA-VOICE-1: a visitor who was greeted on an earlier visit   // the greeted-key the card is showing for; it hides on its own when the product changes
   const frameRef = useRef(null)
   const btnRef = useRef(null)
   const lastSent = useRef('')
@@ -43,12 +44,13 @@ export default function StorefrontChat({ chatKey, accent, orgName, productId, pr
     try { seen = !!sessionStorage.getItem(k) } catch { /* storage can be blocked */ }
     if (seen) return undefined
     const t = setTimeout(() => {
+      try { setReturning(localStorage.getItem(seenKey(chatKey)) === '1' && !sessionStorage.getItem(seenKey(chatKey))) } catch { /* storage can be blocked */ }
       setCardFor(k)
-      try { sessionStorage.setItem(k, '1') } catch { /* ignore */ }
+      try { sessionStorage.setItem(k, '1'); sessionStorage.setItem(seenKey(chatKey), '1'); localStorage.setItem(seenKey(chatKey), '1') } catch { /* ignore */ }
     }, 4000)
     return () => clearTimeout(t)
   }, [chatKey, pid, open])
-  const cardText = cardFor && cardFor === greetedKey(chatKey, pid) ? greetingText(orgName, productTitle) : ''
+  const cardText = cardFor && cardFor === greetedKey(chatKey, pid) ? greetingText(orgName, productTitle, { goal, returning }) : ''
 
   const post = (m) => {
     try { if (m && frameRef.current && frameRef.current.contentWindow) frameRef.current.contentWindow.postMessage(m, window.location.origin) } catch { /* ignore */ }

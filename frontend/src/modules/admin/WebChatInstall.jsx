@@ -191,7 +191,7 @@ export default function WebChatInstall({ data, cfg, set, setMsg }) {
         {cfg.ask_bar && (
           <>
             <label style={label} htmlFor="wc-bar-text">Words inside the bar</label>
-            <input id="wc-bar-text" style={input} maxLength={60} value={cfg.ask_bar_text || ''} onChange={(e) => set('ask_bar_text', e.target.value)} placeholder="Ask me anything…" />
+            <input id="wc-bar-text" style={input} maxLength={60} value={cfg.ask_bar_text || ''} onChange={(e) => set('ask_bar_text', e.target.value)} placeholder="Type your question…" />
             <p style={small}>Where it appears: add <code>{'<div data-chioma-slot></div>'}</code> to your page, under your main button for example. On a dark section use <code>{'<div data-chioma-slot data-chioma-theme="dark"></div>'}</code>. Without it, the bar sits at the bottom of the screen. Press Save at the bottom after changing these.</p>
           </>
         )}

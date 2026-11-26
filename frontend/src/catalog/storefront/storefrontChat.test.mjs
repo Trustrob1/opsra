@@ -32,14 +32,35 @@ test('viewingMessage: only for a valid product', () => {
   assert.equal(viewingMessage('a b'), null)
 })
 
-import { greetingText, greetedKey } from './storefrontChat.js'
+import { greetingText, greetedKey, helloWord } from './storefrontChat.js'
 
-test('greetingText: names the product on a product page, the shop otherwise', () => {
-  assert.equal(greetingText('Royal Rest', 'Holiday Sleep Mattress'), 'Questions about Holiday Sleep Mattress? I can help.')
-  assert.equal(greetingText('Royal Rest', ''), 'Hi, I’m Chioma. Ask me anything about Royal Rest.')
-  assert.equal(greetingText('', null), 'Hi, I’m Chioma. Ask me anything.')
+test('greetingText (CHIOMA-VOICE-1): a warm, time-aware welcome that fits any business', () => {
+  assert.equal(greetingText('Royal Rest', 'Holiday Sleep Mattress'), 'Any questions about the Holiday Sleep Mattress? I’m happy to help.')
+  assert.equal(greetingText('Royal Rest', 'The Big Bed'), 'Any questions about the Big Bed? I’m happy to help.')
+  assert.equal(greetingText('Royal Rest', '', { hour: 9, goal: 'a new mattress' }), 'Good morning, welcome to Royal Rest! Looking for a new mattress, or just browsing?')
+  assert.equal(greetingText('Glow Salon', '', { hour: 14 }), 'Good afternoon, welcome to Glow Salon! Looking for something, or just browsing?')
+  assert.equal(greetingText('', null, { hour: 20 }), 'Good evening, welcome! Looking for something, or just browsing?')
+  assert.equal(greetingText('Glow Salon', '', { hour: 2 }), 'Hello, welcome to Glow Salon! Looking for something, or just browsing?')
+  assert.equal(greetingText('Glow Salon', '', { returning: true }), 'Welcome back to Glow Salon! 😊 Anything I can help you with today?')
   assert.ok(greetingText('X', 'A'.repeat(80)).includes('…'))
-  assert.equal(greetingText('X', '  Big   Bed  '), 'Questions about Big Bed? I can help.')
+  assert.equal(greetingText('X', '  Big   Bed  '), 'Any questions about the Big Bed? I’m happy to help.')
+  for (const w of ['Chioma. Ask me anything', 'virtual assistant']) assert.ok(!greetingText('X', '', { hour: 9 }).includes(w))
+})
+
+test('helloWord: morning, afternoon, evening, and a plain hello in the small hours', () => {
+  assert.deepEqual([4, 5, 11, 12, 16, 17, 23, 0].map(helloWord), ['Hello', 'Good morning', 'Good morning', 'Good afternoon', 'Good afternoon', 'Good evening', 'Good evening', 'Hello'])
+})
+
+test('widget.js chiomaGreeting matches the storefront greeting', async () => {
+  const fs = await import('node:fs')
+  const src = fs.readFileSync(new URL('../../../public/widget.js', import.meta.url), 'utf8')
+  const body = src.slice(src.indexOf('function chiomaGreeting'), src.indexOf('\n  }\n', src.indexOf('function chiomaGreeting')) + 4)
+  const fn = new Function(`${body}; return chiomaGreeting`)()
+  for (const [o, title, opts] of [['Royal Rest', '', { hour: 9, goal: 'a new mattress' }], ['Glow Salon', '', { hour: 15 }], ['Glow Salon', 'The Gel Polish', {}], ['Glow Salon', '', { returning: true }]]) {
+    assert.equal(fn({ name: o, product: title, goal: opts.goal, hour: opts.hour, returning: opts.returning }), greetingText(o, title, opts))
+  }
+  assert.equal(fn({ name: 'X', hint: 'cart', hour: 9 }), 'Need a hand with your order? I’m right here.')
+  assert.ok(!src.includes('online now'))
 })
 
 test('greetedKey: one per product per chat', () => {

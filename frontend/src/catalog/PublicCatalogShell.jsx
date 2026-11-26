@@ -292,7 +292,7 @@ export default function PublicCatalogShell() {
       {page}
       {catalogData.template === 'storefront' && canShowChat(catalogData.chat) && (
         <StorefrontChat
-          chatKey={catalogData.chat.key} accent={resolveAccent(catalogData.style)} orgName={catalogData.orgName}
+          chatKey={catalogData.chat.key} accent={resolveAccent(catalogData.style)} orgName={catalogData.orgName} goal={catalogData.chat.goal || ''}
           productId={itemSlug && currentItem ? currentItem.id : null}
           productTitle={itemSlug && currentItem ? currentItem.title : ''}
         />
