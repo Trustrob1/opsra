@@ -36,18 +36,21 @@ CFG = {"shop_enabled": True}
 @pytest.mark.parametrize("text,dims", [
     ("Do you have 7*7 size", (7.0, 7.0)), ("6*6 and 7*7", (6.0, 6.0)), ("6 by 6 14inchi", (6.0, 6.0)), ("6x6", (6.0, 6.0)),
     ("6ft by 7ft", (6.0, 7.0)), ("72x72", (6.0, 6.0)), ("183 x 203 cm", (6.0, 6.66)), ("i want 5 by 6", (5.0, 6.0)),
+    ("6/6", (6.0, 6.0)), ("do you have 6/6?", (6.0, 6.0)), ("6/7 ft", (6.0, 7.0)), ("4.5/6", (4.5, 6.0)),
+    ("I need 6 / 6 mattress", (6.0, 6.0)), ("price of 7/7", (7.0, 7.0)),
 ])
 def test_reads_sizes_the_way_visitors_type_them(text, dims):
     assert z.parse_size(text)["dims"] == dims
 
 
-@pytest.mark.parametrize("text", ["call 0816 878 2936", "price 625000", "Mattress and pillow prices", "hello", "1 by 1", ""])
+@pytest.mark.parametrize("text", ["call 0816 878 2936", "price 625000", "12/6/2026", "Mattress and pillow prices", "hello", "1 by 1", ""])
 def test_ignores_things_that_are_not_sizes(text):
     assert z.parse_size(text) is None
 
 
 def test_thickness_is_kept():
     assert z.parse_size("6 by 6 14inchi")["thickness"] == 14
+    assert z.parse_size("6/6 14 inches")["thickness"] == 14
 
 
 def test_reads_the_business_size_labels():
