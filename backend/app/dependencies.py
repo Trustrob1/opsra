@@ -20,7 +20,7 @@ import logging
 from typing import Optional
 
 from cachetools import TTLCache
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.database import get_supabase
@@ -118,10 +118,38 @@ async def get_current_user(
 # get_current_org — fetch user record + org context from database
 # ---------------------------------------------------------------------------
 
+# STOCK-4: the Inventory Manager sees only Inventory. Every other staff API answers 403 for that role.
+INVENTORY_ONLY_PREFIXES = (
+    "/api/v1/inventory", "/api/v1/auth", "/api/v1/notifications", "/api/v1/platform/status",
+)
+
+
+def inventory_only_blocked(db_user: Optional[dict], path: Optional[str]) -> bool:
+    """True when an Inventory Manager calls an API outside Inventory (plus sign-in, notifications, the app shell)."""
+    role = (db_user or {}).get("roles") or {}
+    if role.get("template") != "inventory_manager" or not path:
+        return False
+    return not any(path == p or path.startswith(p + "/") or path.startswith(p + "?") for p in INVENTORY_ONLY_PREFIXES)
+
+
 async def get_current_org(
+    request: Request = None,
     current_user=Depends(get_current_user),
     supabase=Depends(get_supabase),
 ) -> dict:
+    """See _load_current_org. STOCK-4: also keeps the Inventory Manager inside Inventory."""
+    db_user = await _load_current_org(current_user=current_user, supabase=supabase)
+    path = getattr(getattr(request, "url", None), "path", None) if request is not None else None
+    if inventory_only_blocked(db_user, path):
+        raise HTTPException(
+            status_code=403,
+            detail={"success": False, "data": None,
+                    "error": {"code": "FORBIDDEN", "message": "Your role can only use Inventory.", "field": None}},
+        )
+    return db_user
+
+
+async def _load_current_org(current_user, supabase) -> dict:
     """
     Fetch the authenticated user's full record from the users table,
     including their role and permissions.

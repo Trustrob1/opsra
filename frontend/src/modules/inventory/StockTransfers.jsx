@@ -3,6 +3,8 @@
  * STOCK-3 — moving stock between locations. Move stock (managers): the goods leave the sending location at once and
  * show as "on the way" at the receiving one. Receive all or part when it arrives; anything that won't arrive can be
  * sent back (cancel). Everyone can see the list; only managers act (the server checks again).
+ * STOCK-4 — out of a warehouse (anyone but the owner) Move stock asks the owner first: the goods are held at the
+ * warehouse and the request shows in Requests; it is sent from there once approved.
  */
 import { useCallback, useEffect, useState } from 'react'
 import { ArrowRight, Trash2, Truck } from 'lucide-react'
@@ -17,7 +19,7 @@ const newKey = () => `t${++keySeq}`
 const STATUS = { in_transit: 'On the way', done: 'Arrived', cancelled: 'Cancelled' }
 const TONE = { in_transit: ['#FFF3E0', '#C05A00'], done: ['#EEF9F1', '#1A7A40'], cancelled: [ds.light, ds.gray] }
 
-export function MoveStock({ locations, onClose, onDone }) {
+export function MoveStock({ locations, isOwner = false, onClose, onDone }) {
   const act = (locations || []).filter((l) => l.is_active)
   const [from, setFrom] = useState(() => act.find((l) => l.is_default)?.id || act[0]?.id || '')
   const [to, setTo] = useState(() => act.find((l) => !l.is_default)?.id || '')
@@ -28,6 +30,8 @@ export function MoveStock({ locations, onClose, onDone }) {
 
   const setLine = (key, patch) => setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)))
   const add = (p) => setLines((ls) => [...ls, { key: newKey(), product_id: p.id, title: p.title, sizes: p.sizes, variant: p.sizes.length === 1 ? p.sizes[0] : '', quantity: '' }])
+  const fromLoc = act.find((l) => l.id === from)
+  const needsOk = !isOwner && fromLoc?.kind === 'warehouse'   // STOCK-4
   const total = lines.reduce((s, l) => s + (parseInt(l.quantity, 10) || 0), 0)
   const ready = from && to && from !== to && lines.length > 0
     && lines.every((l) => /^\d+$/.test(l.quantity) && Number(l.quantity) > 0 && (!l.sizes.length || l.variant))
@@ -42,10 +46,16 @@ export function MoveStock({ locations, onClose, onDone }) {
     if (!ready || busy) return
     setBusy(true); setErr('')
     try {
-      const t = await sendTransfer({
+      const out = await sendTransfer({
         from_location_id: from, to_location_id: to, note: note.trim() || null,
         lines: lines.map((l) => ({ product_id: l.product_id, variant: l.variant || null, quantity: Number(l.quantity) })),
       })
+      if (out?.request) {
+        const r = out.request
+        onDone?.(`Asked the owner to approve moving ${units(r.units)} unit${r.units === 1 ? '' : 's'} from ${r.from_name} to ${r.to_name}. The goods are held until then.`, true)
+        return
+      }
+      const t = out?.transfer || out
       onDone?.(`${units(t.units)} unit${t.units === 1 ? '' : 's'} on the way from ${t.from_name} to ${t.to_name}. Mark them received when they arrive.`)
     } catch (e) {
       setErr(stockError(e, 'Could not move the stock. Please try again.'))
@@ -65,7 +75,7 @@ export function MoveStock({ locations, onClose, onDone }) {
       footer={<>
         <span style={{ color: ds.gray, fontSize: 13.5, marginRight: 'auto' }}>{why && (lines.length || from === to) ? why : total ? `${units(total)} unit${total === 1 ? '' : 's'} to move` : 'Add what you are sending'}</span>
         <button type="button" style={btnG} onClick={onClose} disabled={busy}>Cancel</button>
-        <button type="button" style={disabled(btnP, !ready || busy)} disabled={!ready || busy} onClick={save}>{busy ? 'Sending…' : 'Send stock'}</button>
+        <button type="button" style={disabled(btnP, !ready || busy)} disabled={!ready || busy} onClick={save}>{busy ? 'Sending…' : needsOk ? 'Ask for approval' : 'Send stock'}</button>
       </>}>
       {err && <div role="alert" style={errBox}>{err}</div>}
       {act.length < 2 ? <p style={{ color: ds.gray, margin: 0 }}>Add a second location in Settings to move stock between them.</p> : <>
@@ -74,7 +84,9 @@ export function MoveStock({ locations, onClose, onDone }) {
           {pick('mv-to', to, setTo, 'To')}
         </div>
         {from && from === to && <p role="alert" style={{ color: ds.red, fontSize: 13, margin: '0 0 8px' }}>Choose two different locations.</p>}
-        <p style={{ color: ds.gray, fontSize: 12.5, margin: '0 0 14px' }}>The stock leaves {act.find((l) => l.id === from)?.name || 'the sending location'} now and shows as on the way until it is received.</p>
+        <p style={{ color: needsOk ? '#C05A00' : ds.gray, fontSize: 12.5, margin: '0 0 14px' }}>{needsOk
+          ? `${fromLoc.name} is a warehouse, so the owner approves this first. The goods are held there (nobody can sell them) until it is approved and sent.`
+          : `The stock leaves ${fromLoc?.name || 'the sending location'} now and shows as on the way until it is received.`}</p>
         <div style={{ display: 'grid', gap: 10, marginBottom: 12 }}>
           {lines.map((l, i) => (
             <div key={l.key} style={{ border: `1px solid ${ds.border}`, borderRadius: 12, padding: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, alignItems: 'end' }}>

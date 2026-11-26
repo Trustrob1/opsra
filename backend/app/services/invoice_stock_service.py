@@ -284,7 +284,7 @@ def retry(db, dry_run: bool = False, days: int = 60) -> dict:
 # ───────────────────────────── delivery ─────────────────────────────
 
 def can_deliver(org_ctx: dict, doc: dict) -> bool:
-    return stock.is_manager(org_ctx) or (bool(doc.get("created_by")) and doc.get("created_by") == org_ctx.get("id"))
+    return stock.can_handle(org_ctx) or (bool(doc.get("created_by")) and doc.get("created_by") == org_ctx.get("id"))
 
 
 def deliver(db, org_ctx: dict, invoice_id: str, lines: list, note: Optional[str] = None) -> dict:
@@ -293,7 +293,8 @@ def deliver(db, org_ctx: dict, invoice_id: str, lines: list, note: Optional[str]
     if not doc:
         raise inv._err_nf("Invoice")
     if not can_deliver(org_ctx, doc):
-        raise inv.InvoiceError("FORBIDDEN", "Only managers or the rep who made this invoice can mark it delivered.", 403)
+        raise inv.InvoiceError("FORBIDDEN", "Only managers, the Inventory Manager or the rep who made this invoice can "
+                                            "mark it delivered.", 403)
     if not doc.get("stock_tracked") or not doc.get("location_id"):
         raise inv.InvoiceError("INVALID_TRANSITION", "This invoice doesn't take stock.", 400)
     if doc.get("status") != "paid":
@@ -313,6 +314,8 @@ def deliver(db, org_ctx: dict, invoice_id: str, lines: list, note: Optional[str]
             raise inv.InvoiceError("VALIDATION_ERROR", f"Only {left} of {_label(item)} left to deliver.", 422,
                                    f"lines.{n}.quantity")
         plan.append((item, qty))
+    from app.services import stock_request_service as move_requests   # STOCK-4: warehouse goods need the owner's OK
+    move_requests.check_delivery(db, org_ctx, doc, plan)
     reason = "Delivered" + (f": {' '.join(str(note).split())[:300]}" if note and str(note).strip() else "")
     for item, qty in plan:
         try:
@@ -321,6 +324,7 @@ def deliver(db, org_ctx: dict, invoice_id: str, lines: list, note: Optional[str]
                         reason=f"{reason} (invoice {doc.get('number') or ''})".strip(), label=_label(item))
         except stock.StockError as e:
             raise inv.InvoiceError(e.code, e.message, e.status, e.field)
+    move_requests.check_delivery(db, org_ctx, doc, plan, consume=True)
     inv._audit(db, org_id, user_id, "invoice.delivered", doc["id"],
                {"lines": [{"item_id": i["id"], "quantity": q} for i, q in plan]})
     return inv.get_doc(db, org_id, doc["id"])
@@ -363,7 +367,9 @@ def _open_list(db, org_id: str, statuses: tuple, field: str, location_id: Option
                     "location": locs.get(d.get("location_id")), "rep_name": users.get(d.get("created_by")),
                     "balance": inv._f(inv._money(d.get("total") or 0) - inv._money(d.get("amount_paid") or 0)),
                     "units": sum(_int(i.get(field)) for i in lines),
-                    "lines": [{"description": i.get("description"), "units": _int(i.get(field))} for i in lines]})
+                    "location_id": d.get("location_id"),
+                    "lines": [{"description": i.get("description"), "units": _int(i.get(field)), "item_id": i["id"],
+                               "location_id": i.get("stock_location_id") or d.get("location_id")} for i in lines]})
         if len(out) >= limit:
             break
     return out

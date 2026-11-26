@@ -5,6 +5,8 @@
  * Shown to every product mode, like Invoices.
  * STOCK-3 — Moves tab and Move stock (managers): stock sent between locations, received when it arrives.
  * REPORT-1 — Report tab (owners and admins): the inventory report with PDF / CSV downloads.
+ * STOCK-4 — Requests tab (stock leaving a warehouse waits for the owner) and Records tab (approved movements by week,
+ * month or dates). The Inventory Manager works the stock (receive, adjust, move, deliver); settings stay with managers.
  */
 import { useCallback, useEffect, useState } from 'react'
 import { Boxes, PackagePlus, Search, SlidersHorizontal, Truck } from 'lucide-react'
@@ -21,6 +23,8 @@ import InvoiceStockList from './InvoiceStockList'   // STOCK-2
 import StockApprovals from './StockApprovals'       // STOCK-2b
 import StockTransfers, { MoveStock } from './StockTransfers'   // STOCK-3
 import InventoryReport from './InventoryReport'                 // REPORT-1
+import StockRequests from './StockRequests'                     // STOCK-4
+import MoveRecords from './MoveRecords'                         // STOCK-4
 
 export default function InventoryModule() {
   const isMobile = useIsMobile()
@@ -59,7 +63,11 @@ export default function InventoryModule() {
     )
   }
 
-  const canManage = !!data?.can_manage
+  const canManage = !!data?.can_manage          // STOCK-4: managers and the Inventory Manager
+  const canSettings = !!data?.can_settings
+  const isOwner = !!data?.is_owner
+  const waiting = data?.requests?.pending || 0
+  const toSend = data?.requests?.approved || 0
   const enabled = !!data?.settings?.enabled
   const locations = data?.locations || []
   const s = data?.summary || {}
@@ -93,19 +101,29 @@ export default function InventoryModule() {
         {chip(tab === 'stock', 'Stock', () => setTab('stock'))}
         {enabled && chip(tab === 'deliver', 'To deliver', () => setTab('deliver'))}
         {enabled && chip(tab === 'held', 'Held', () => setTab('held'))}
-        {enabled && canManage && chip(tab === 'approvals', 'Approvals', () => setTab('approvals'))}
+        {enabled && (canManage || isOwner) && chip(tab === 'requests', `Requests${(isOwner ? waiting : toSend) ? ` (${isOwner ? waiting : toSend})` : ''}`, () => setTab('requests'))}
+        {enabled && canSettings && chip(tab === 'approvals', 'Approvals', () => setTab('approvals'))}
         {enabled && locations.length > 1 && chip(tab === 'moves', 'Moves', () => setTab('moves'))}
         {enabled && chip(tab === 'history', 'History', () => setTab('history'))}
+        {enabled && (canManage || isOwner) && chip(tab === 'records', 'Records', () => setTab('records'))}
         {enabled && isAdmin && chip(tab === 'report', 'Report', () => setTab('report'))}
-        {canManage && chip(tab === 'settings', 'Settings', () => setTab('settings'))}
+        {canSettings && chip(tab === 'settings', 'Settings', () => setTab('settings'))}
       </div>
+      {enabled && isOwner && waiting > 0 && tab !== 'requests' && (
+        <button type="button" onClick={() => setTab('requests')}
+          style={{ ...card, width: '100%', textAlign: 'left', cursor: 'pointer', marginBottom: 14, padding: '12px 16px', background: '#FFF8EE', borderColor: '#F3D2A6', color: '#8A4B00', fontWeight: 600, fontSize: 14, fontFamily: ds.fontDm }}>
+          {waiting} stock request{waiting === 1 ? '' : 's'} waiting for your approval. Open Requests
+        </button>
+      )}
       {note && <div role="status" style={{ background: '#EEF9F1', border: '1px solid #BFE5CB', color: '#1A7A40', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 14, display: 'flex', gap: 10 }}>
         <span style={{ flex: 1 }}>{note}</span><button type="button" onClick={() => setNote('')} style={{ border: 'none', background: 'none', color: '#1A7A40', cursor: 'pointer', fontWeight: 600 }}>Close</button></div>}
 
-      {tab === 'settings' && canManage ? <InventorySettings onChanged={load} />
+      {tab === 'settings' && canSettings ? <InventorySettings onChanged={load} />
+        : tab === 'requests' && enabled ? <StockRequests onChanged={load} reloadKey={moved} />
+        : tab === 'records' && enabled ? <MoveRecords locations={locations} />
         : tab === 'history' && enabled ? <StockHistory locations={locations} />
         : tab === 'report' && enabled && isAdmin ? <InventoryReport locations={locations} />
-        : tab === 'approvals' && enabled && canManage ? <StockApprovals onChanged={load} />
+        : tab === 'approvals' && enabled && canSettings ? <StockApprovals onChanged={load} />
         : tab === 'moves' && enabled ? <StockTransfers canManage={canManage} onChanged={load} reloadKey={moved} />
         : (tab === 'deliver' || tab === 'held') && enabled ? <InvoiceStockList key={tab} kind={tab} locations={locations} onChanged={load} />
         : data && !enabled ? (
@@ -113,8 +131,8 @@ export default function InventoryModule() {
             <Boxes size={30} color={ds.teal} />
             <h2 style={{ margin: '10px 0 6px', fontSize: 18, color: ds.dark }}>Keep your stock in Opsra</h2>
             <p style={{ color: ds.gray, margin: '0 0 14px' }}>Track stock per store or warehouse, receive deliveries, record damage and stock counts, and see what is running low.
-              {canManage ? ' Turn it on in Settings; today\'s numbers are copied in for you.' : ' Ask your business owner or operations manager to turn it on.'}</p>
-            {canManage && <button type="button" style={btnP} onClick={() => setTab('settings')}>Set up stock</button>}
+              {canSettings ? ' Turn it on in Settings; today\'s numbers are copied in for you.' : ' Ask your business owner or operations manager to turn it on.'}</p>
+            {canSettings && <button type="button" style={btnP} onClick={() => setTab('settings')}>Set up stock</button>}
           </div>
         ) : (
         <>
@@ -194,7 +212,7 @@ export default function InventoryModule() {
         onReceive={(preset) => { setPanel(null); setForm({ kind: 'receive', preset }) }}
         onAdjust={(preset) => { setPanel(null); setForm({ kind: 'adjust', preset }) }} />}
       {form?.kind === 'receive' && <ReceiveStock locations={locations} preset={form.preset} onClose={() => setForm(null)} onDone={done} />}
-      {form?.kind === 'move' && <MoveStock locations={locations} onClose={() => setForm(null)} onDone={(text) => { done(text); setTab('moves') }} />}
+      {form?.kind === 'move' && <MoveStock locations={locations} isOwner={isOwner} onClose={() => setForm(null)} onDone={(text, asked) => { done(text); setTab(asked ? 'requests' : 'moves') }} />}
       {form?.kind === 'adjust' && <AdjustStock locations={locations} preset={form.preset} onClose={() => setForm(null)} onDone={done} />}
     </div>
   )

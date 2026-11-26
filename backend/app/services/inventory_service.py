@@ -57,7 +57,7 @@ ADJUST_REASONS = {
 }
 KIND_LABEL = {
     "import": "Starting stock", "receive": "Received", "adjust": "Adjusted", "return": "Returned",
-    "hold": "Held for invoice", "release": "Hold released", "paid": "Paid, to deliver", "deliver": "Delivered",
+    "hold": "Held", "release": "Hold released", "paid": "Paid, to deliver", "deliver": "Delivered",
     "transfer_out": "Sent to another location", "transfer_in": "Received from another location",
     "transfer_cancel": "Move cancelled",
 }
@@ -78,6 +78,22 @@ def _now() -> str:
 def is_manager(org_ctx: Optional[dict]) -> bool:
     role = (org_ctx or {}).get("roles") or {}
     return role.get("template") in MANAGER_TEMPLATES or (role.get("permissions") or {}).get("is_admin") is True
+
+
+def is_owner(org_ctx: Optional[dict]) -> bool:
+    """STOCK-4: the business owner - the only one who approves stock leaving a warehouse."""
+    return ((org_ctx or {}).get("roles") or {}).get("template") == "owner"
+
+
+def is_inventory_manager(org_ctx: Optional[dict]) -> bool:
+    """STOCK-4: the Inventory Manager role - sees only Inventory, receives, counts, sends and delivers stock."""
+    return ((org_ctx or {}).get("roles") or {}).get("template") == "inventory_manager"
+
+
+def can_handle(org_ctx: Optional[dict]) -> bool:
+    """STOCK-4: who works the stock day to day (receive, adjust, move, deliver): managers and the Inventory Manager.
+    Settings and locations stay with managers."""
+    return is_manager(org_ctx) or is_inventory_manager(org_ctx)
 
 
 def _qty(value: Any, field: str = "quantity", allow_zero: bool = False) -> int:
@@ -295,7 +311,7 @@ def refresh_all(db, org_id: str) -> int:
 # ───────────────────────────── locations ─────────────────────────────
 
 def list_locations(db, org_id: str, include_inactive: bool = True) -> list:
-    q = db.table("stock_locations").select("id, name, region, is_default, is_active, created_at").eq("org_id", org_id)
+    q = db.table("stock_locations").select("id, name, region, kind, is_default, is_active, created_at").eq("org_id", org_id)
     if not include_inactive:
         q = q.eq("is_active", True)
     rows = _rows(q.execute())
@@ -307,6 +323,16 @@ def _default_location(db, org_id: str) -> Optional[dict]:
     rows = _rows(db.table("stock_locations").select("*").eq("org_id", org_id).eq("is_default", True)
                  .eq("is_active", True).limit(1).execute())
     return rows[0] if rows else None
+
+
+LOCATION_KINDS = ("warehouse", "showroom")   # STOCK-4: stock leaving a warehouse needs the owner's approval
+
+
+def clean_kind(value: Any) -> str:
+    v = str(value or "showroom").strip().lower()
+    if v not in LOCATION_KINDS:
+        raise StockError("VALIDATION_ERROR", "Choose warehouse or showroom.", 422, "kind")
+    return v
 
 
 def _location(db, org_id: str, location_id: Any) -> dict:
@@ -339,6 +365,7 @@ def create_location(db, org_id: str, body: dict) -> dict:
     if make_default:
         _unset_default(db, org_id)
     row = {"org_id": org_id, "name": name, "region": region, "is_default": make_default, "is_active": True,
+           "kind": clean_kind(body.get("kind")),   # STOCK-4
            "created_at": _now(), "updated_at": _now()}
     return _rows(db.table("stock_locations").insert(row).execute())[0]
 
@@ -358,6 +385,8 @@ def update_location(db, org_id: str, location_id: Any, body: dict) -> dict:
         patch["name"] = _clean_name(db, org_id, body["name"], skip_id=loc["id"])
     if "region" in body:
         patch["region"] = sales.clean_region(db, org_id, body.get("region"))
+    if body.get("kind") is not None:   # STOCK-4: warehouse or showroom
+        patch["kind"] = clean_kind(body.get("kind"))
     if body.get("is_active") is False and loc.get("is_active"):
         if loc.get("is_default"):
             raise StockError("VALIDATION_ERROR", "Make another location the main one before turning this one off.",

@@ -791,6 +791,8 @@ function AppShell() {
   // and actual page access never disagree.
   const _departmentId = user?.roles?.department_id ?? null
   const visibleNav = NAV.filter(item => {
+    // STOCK-4: the Inventory Manager sees Inventory and nothing else (the server answers 403 everywhere else)
+    if (_userTemplate === 'inventory_manager') return item.id === 'inventory'
     // WEBCHAT-RESULTS-1: Web chat results for the owner, operations manager and admin of a business whose website chat is switched on
     if (item.id === 'webchat') return webchatOn && ['owner', 'ops_manager', 'admin'].includes(_userTemplate) && !isWaOnly
     // INV-2: Invoices for every product mode, but not for affiliate partners
@@ -819,6 +821,10 @@ function AppShell() {
   })
 
   const [view, setView]                     = useState('leads')
+  // STOCK-4: the Inventory Manager always lands on (and stays on) Inventory.
+  useEffect(() => {
+    if (_userTemplate === 'inventory_manager' && view !== 'inventory') { setView('inventory'); setActiveNav('inventory') }
+  }, [_userTemplate, view])
   // WA-AUTO-1: keep wa_automation orgs on screens they own (WEB-ONLY-1b: and web_chat orgs).
   useEffect(() => {
     if (!isNoCrm) return
@@ -848,6 +854,7 @@ function AppShell() {
   useEffect(() => {
     const token = useAuthStore.getState().token
     if (!token) return
+    if (useAuthStore.getState().getRoleTemplate() === 'inventory_manager') return   // STOCK-4: no briefing for this role
     getBriefing().then(result => {
       if (result?.show && result?.content) {
         setAriaBriefing(result.content)

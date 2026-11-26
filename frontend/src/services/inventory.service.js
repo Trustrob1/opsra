@@ -53,3 +53,13 @@ export const downloadInventoryReport = async (params, format) => {
   a.remove()
   setTimeout(() => URL.revokeObjectURL(url), 10000)
 }
+
+// STOCK-4: the owner's approval before stock leaves a warehouse, deliveries from the Inventory page, movement records
+export const getMoveRequests   = (status) => api.get('/api/v1/inventory/requests', { params: status ? { status } : {} }).then(d)
+export const approveMove       = (id, note) => api.post(`/api/v1/inventory/requests/${id}/approve`, { note: note || null }).then(d)
+export const rejectMove        = (id, note) => api.post(`/api/v1/inventory/requests/${id}/reject`, { note: note || null }).then(d)
+export const sendApprovedMove  = (id) => api.post(`/api/v1/inventory/requests/${id}/send`).then(d)
+export const cancelMoveRequest = (id) => api.post(`/api/v1/inventory/requests/${id}/cancel`).then(d)
+export const askToDeliver      = (invoiceId, body = {}) => api.post(`/api/v1/inventory/deliveries/${invoiceId}/request`, body).then(d)
+export const deliverFromStock  = (invoiceId, body) => api.post(`/api/v1/inventory/deliveries/${invoiceId}`, body).then(d)
+export const getMoveRecords    = (params = {}) => api.get('/api/v1/inventory/records', { params }).then(d)

@@ -1298,7 +1298,8 @@ class SlaConfigUpdate(BaseModel):
 # ── Valid role templates — Technical Spec Section 3.1 ─────────
 VALID_TEMPLATES = {
     "owner", "ops_manager", "sales_agent",
-    "customer_success", "support_agent", "finance", "read_only", "affiliate_partner"
+    "customer_success", "support_agent", "finance", "read_only", "affiliate_partner",
+    "inventory_manager",   # STOCK-4: sees only Inventory
 }
 
 

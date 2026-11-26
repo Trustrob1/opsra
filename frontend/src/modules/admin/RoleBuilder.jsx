@@ -33,6 +33,7 @@ const VALID_TEMPLATES = [
   'owner', 'ops_manager', 'sales_agent',
   'customer_success', 'support_agent', 'finance', 'read_only',
   'affiliate_partner',
+  'inventory_manager',   // STOCK-4: sees only Inventory
 ]
 
 const OVERLAY = {
@@ -66,6 +67,7 @@ const TMPL_COLOR = {
   support_agent: { bg: '#FCE7F3', color: '#9D174D' },
   finance: { bg: '#D1FAE5', color: '#065F46' },
   read_only: { bg: '#F1F5F9', color: '#475569' },
+  inventory_manager: { bg: '#FFEDD5', color: '#9A3412' },
 }
 
 export default function RoleBuilder() {

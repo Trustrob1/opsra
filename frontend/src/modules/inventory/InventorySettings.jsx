@@ -17,8 +17,9 @@ const h = { margin: '0 0 12px', fontSize: 16, color: ds.dark }
 function LocationRow({ loc, regions, onSaved, onError }) {
   const [name, setName] = useState(loc.name)
   const [region, setRegion] = useState(loc.region || '')
+  const [kind, setKind] = useState(loc.kind || 'showroom')   // STOCK-4
   const [busy, setBusy] = useState(false)
-  const changed = name.trim() !== loc.name || (region || null) !== (loc.region || null)
+  const changed = name.trim() !== loc.name || (region || null) !== (loc.region || null) || kind !== (loc.kind || 'showroom')
   const run = async (body) => {
     setBusy(true); onError('')
     try { await updateLocation(loc.id, body); onSaved() } catch (e) { onError(stockError(e, 'Could not save the location.')) } finally { setBusy(false) }
@@ -34,8 +35,13 @@ function LocationRow({ loc, regions, onSaved, onError }) {
             {regions.map((r) => <option key={r} value={r}>{r}</option>)}
           </select></div>
       )}
+      <div><label style={lab} htmlFor={`loc-k-${loc.id}`}>Type</label>
+        <select id={`loc-k-${loc.id}`} style={inp} value={kind} onChange={(e) => setKind(e.target.value)}>
+          <option value="warehouse">Warehouse</option>
+          <option value="showroom">Showroom / store</option>
+        </select></div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        {changed && <button type="button" style={disabled(btnP, busy || !name.trim())} disabled={busy || !name.trim()} onClick={() => run({ name: name.trim(), region: region || null })}>Save</button>}
+        {changed && <button type="button" style={disabled(btnP, busy || !name.trim())} disabled={busy || !name.trim()} onClick={() => run({ name: name.trim(), region: region || null, kind })}>Save</button>}
         {loc.is_default
           ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: ds.tealDark, fontWeight: 600, fontSize: 13.5, minHeight: 42 }}><Star size={15} />Main location</span>
           : loc.is_active && <button type="button" style={btnG} disabled={busy} onClick={() => run({ is_default: true })}>Make main</button>}
@@ -54,6 +60,7 @@ export default function InventorySettings({ onChanged }) {
   const [confirm, setConfirm] = useState(false)
   const [newName, setNewName] = useState('')
   const [newRegion, setNewRegion] = useState('')
+  const [newKind, setNewKind] = useState('showroom')   // STOCK-4
   const [busy, setBusy] = useState('')
   const [err, setErr] = useState('')
   const [msg, setMsg] = useState('')
@@ -77,8 +84,8 @@ export default function InventorySettings({ onChanged }) {
   const addLocation = async () => {
     setBusy('loc'); setErr(''); setMsg('')
     try {
-      await createLocation({ name: newName.trim(), region: newRegion || null })
-      setNewName(''); setNewRegion(''); loadLocs(); onChanged?.()
+      await createLocation({ name: newName.trim(), region: newRegion || null, kind: newKind })
+      setNewName(''); setNewRegion(''); setNewKind('showroom'); loadLocs(); onChanged?.()
     } catch (e) { setErr(stockError(e, 'Could not add the location.')) } finally { setBusy('') }
   }
 
@@ -155,9 +162,9 @@ export default function InventorySettings({ onChanged }) {
 
       <section style={card}>
         <h3 style={{ ...h, display: 'flex', alignItems: 'center', gap: 8 }}><MapPin size={17} color={ds.teal} />Locations</h3>
-        <p style={{ color: ds.gray, fontSize: 13.5, margin: '0 0 4px' }}>Stores or warehouses where you keep stock. The main location is used for the starting numbers. A location can be turned off once it has no stock.</p>
+        <p style={{ color: ds.gray, fontSize: 13.5, margin: '0 0 4px' }}>Stores or warehouses where you keep stock. The main location is used for the starting numbers. A location can be turned off once it has no stock. Stock leaving a warehouse, moved to another location or delivered to a customer, needs the business owner's approval first.</p>
         {locs.locations.map((l) => (
-          <LocationRow key={`${l.id}-${l.name}-${l.region}-${l.is_default}-${l.is_active}`} loc={l} regions={locs.regions}
+          <LocationRow key={`${l.id}-${l.name}-${l.region}-${l.kind}-${l.is_default}-${l.is_active}`} loc={l} regions={locs.regions}
             onSaved={() => { loadLocs(); onChanged?.() }} onError={setErr} />
         ))}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 10, alignItems: 'end', paddingTop: 12, borderTop: `1px solid ${ds.border}` }}>
@@ -170,6 +177,11 @@ export default function InventorySettings({ onChanged }) {
                 {locs.regions.map((r) => <option key={r} value={r}>{r}</option>)}
               </select></div>
           )}
+          <div><label style={lab} htmlFor="loc-new-k">Type</label>
+            <select id="loc-new-k" style={inp} value={newKind} onChange={(e) => setNewKind(e.target.value)}>
+              <option value="warehouse">Warehouse</option>
+              <option value="showroom">Showroom / store</option>
+            </select></div>
           <div><button type="button" style={disabled(btnP, !!busy || !newName.trim())} disabled={!!busy || !newName.trim()} onClick={addLocation}>Add location</button></div>
         </div>
       </section>

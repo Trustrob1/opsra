@@ -297,5 +297,13 @@ def deliver_all(db, org_ctx: dict, invoice_id: str) -> bool:
         inv_stock.deliver(db, org_ctx, invoice_id, lines, "Taken by the customer at the sale")
         return True
     except (inv.InvoiceError, stock.StockError) as e:
+        if e.code == "NEEDS_APPROVAL":   # STOCK-4: warehouse goods wait in To deliver; the owner is asked at once
+            try:
+                from app.services import stock_request_service as move_requests
+                move_requests.request_delivery(db, org_ctx, invoice_id, None, "Taken by the customer at the sale")
+            except (inv.InvoiceError, stock.StockError) as e2:
+                logger.warning("payment_approval: delivery request failed org=%s invoice=%s: %s", org_id, invoice_id,
+                               e2.message)
+            return False
         logger.warning("payment_approval: deliver failed org=%s invoice=%s: %s", org_id, invoice_id, e.message)
         return False

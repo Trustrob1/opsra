@@ -20,7 +20,19 @@ Plan feature: `inventory` (whole router, plan_gate.require).
   POST   /inventory/transfers/{id}/receive   (manager) all or part arrived; cancel_rest sends the rest back
   POST   /inventory/transfers/{id}/cancel    (manager) everything not yet arrived goes back
 
-Managers = owner, ops_manager, or a role with is_admin. S1/S2: org_id only from get_current_org; ids checked in the service.
+STOCK-4 (owner approval, Inventory Manager role):
+  POST /inventory/transfers from a warehouse by anyone but the owner becomes a request (goods held) - see below.
+  GET    /inventory/requests?status=          open | pending | approved | done | rejected | cancelled | (all)
+  POST   /inventory/requests/{id}/approve     (owner) {note?}
+  POST   /inventory/requests/{id}/reject      (owner) {note?}  a move's held goods are released
+  POST   /inventory/requests/{id}/send        (stock handler) send an approved move
+  POST   /inventory/requests/{id}/cancel      (who asked, or a stock handler)
+  POST   /inventory/deliveries/{invoice_id}/request   ask to deliver a paid invoice's goods from a warehouse
+  POST   /inventory/deliveries/{invoice_id}   (stock handler / the rep) mark goods delivered
+  GET    /inventory/records?period=week|month|custom&start=&end=&location_id=   approved moves and deliveries
+
+Managers = owner, ops_manager, or a role with is_admin. Stock handlers (receive, adjust, move, deliver) = managers
+and the Inventory Manager; settings and locations stay with managers. S1/S2: org_id only from get_current_org; ids checked in the service.
 """
 from __future__ import annotations
 
@@ -41,6 +53,7 @@ from app.models.common import ok
 from app.services import inventory_service as stock
 from app.services import invoice_sales_service as sales
 from app.services import stock_transfer_service as transfers
+from app.services import stock_request_service as move_requests   # STOCK-4
 from app.services import plan_gate_service as plan_gate
 
 logger = logging.getLogger(__name__)
@@ -86,6 +99,7 @@ class LocationIn(_Strict):
     name: str = Field(..., min_length=1, max_length=100)
     region: Optional[str] = Field(None, max_length=255)
     is_default: bool = False
+    kind: Literal["warehouse", "showroom"] = "showroom"   # STOCK-4
 
 
 class LocationPatch(_Strict):
@@ -93,6 +107,7 @@ class LocationPatch(_Strict):
     region: Optional[str] = Field(None, max_length=255)
     is_default: Optional[bool] = None
     is_active: Optional[bool] = None
+    kind: Optional[Literal["warehouse", "showroom"]] = None   # STOCK-4
 
 
 class ReceiveLine(_Strict):
@@ -117,6 +132,25 @@ class AdjustIn(_Strict):
     quantity: int = Field(..., ge=0, le=1_000_000)
     reason: Literal["recount", "damaged", "lost", "found", "returned", "other"]
     note: Optional[str] = Field(None, max_length=400)
+
+
+class DecisionIn(_Strict):   # STOCK-4
+    note: Optional[str] = Field(None, max_length=300)
+
+
+class DeliveryLine(_Strict):
+    item_id: UUID
+    quantity: int = Field(..., ge=1, le=1_000_000)
+
+
+class DeliveryRequestIn(_Strict):
+    lines: Optional[List[DeliveryLine]] = Field(None, max_length=200)
+    note: Optional[str] = Field(None, max_length=300)
+
+
+class DeliverNowIn(_Strict):
+    lines: List[DeliveryLine] = Field(..., min_length=1, max_length=200)
+    note: Optional[str] = Field(None, max_length=300)
 
 
 class ItemPatch(_Strict):
@@ -148,15 +182,30 @@ def _manager(org: dict = Depends(get_current_org)) -> dict:
     return org
 
 
+def _handler(org: dict = Depends(get_current_org)) -> dict:
+    """STOCK-4: managers and the Inventory Manager work the stock."""
+    if not stock.can_handle(org):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail={"code": "FORBIDDEN", "message": "Only managers and the Inventory Manager can change stock."})
+    return org
+
+
 @router.get("/inventory")
 async def get_inventory(q: Optional[str] = Query(None, max_length=100), location_id: Optional[UUID] = None,
                         low: bool = False, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
     try:
-        data = stock.overview(db, _org_id(org), stock.is_manager(org), q=q,
+        data = stock.overview(db, _org_id(org), stock.can_handle(org), q=q,
                               location_id=str(location_id) if location_id else None, low_only=low)
     except stock.StockError as e:
         return _fail(e)
-    data["can_manage"] = stock.is_manager(org)
+    data["can_manage"] = stock.can_handle(org)          # STOCK-4: receive, adjust, move, deliver
+    data["can_settings"] = stock.is_manager(org)        # settings and locations
+    data["is_owner"] = stock.is_owner(org)
+    try:
+        data["requests"] = move_requests.counts(db, _org_id(org))
+    except Exception as exc:  # S14: the page still loads
+        logger.warning("inventory: request counts failed org=%s: %s", _org_id(org), exc)
+        data["requests"] = {"pending": 0, "approved": 0}
     return ok(data=data)
 
 
@@ -214,7 +263,15 @@ async def get_held(location_id: Optional[UUID] = None, org: dict = Depends(get_c
 async def get_to_deliver(location_id: Optional[UUID] = None, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
     """STOCK-2: paid invoices with goods still to deliver, oldest first."""
     from app.services import invoice_stock_service as inv_stock
-    return ok(data={"items": inv_stock.to_deliver_list(db, _org_id(org), str(location_id) if location_id else None)})
+    items = inv_stock.to_deliver_list(db, _org_id(org), str(location_id) if location_id else None)
+    state = move_requests.delivery_state(db, _org_id(org), [i["id"] for i in items])   # STOCK-4
+    kinds = {l["id"]: l.get("kind") or "showroom" for l in stock.list_locations(db, _org_id(org))}
+    for i in items:
+        i["approval"] = state.get(i["id"], {"pending": 0, "approved": 0})
+        for ln in i.get("lines") or []:
+            ln["warehouse"] = kinds.get(ln.get("location_id")) == "warehouse"
+        i["warehouse_units"] = sum(ln["units"] for ln in i.get("lines") or [] if ln["warehouse"])
+    return ok(data={"items": items, "can_deliver": stock.can_handle(org), "is_owner": stock.is_owner(org)})
 
 
 @router.get("/inventory/approvals")
@@ -271,7 +328,7 @@ async def get_history(product_id: Optional[UUID] = None, variant: Optional[str] 
 
 
 @router.post("/inventory/receive")
-async def post_receive(body: ReceiveIn, org: dict = Depends(_manager), db=Depends(get_supabase)):
+async def post_receive(body: ReceiveIn, org: dict = Depends(_handler), db=Depends(get_supabase)):
     try:
         return ok(data=stock.receive(db, _org_id(org), _uid(org), body.model_dump(mode="json")))
     except stock.StockError as e:
@@ -279,7 +336,7 @@ async def post_receive(body: ReceiveIn, org: dict = Depends(_manager), db=Depend
 
 
 @router.post("/inventory/adjust")
-async def post_adjust(body: AdjustIn, org: dict = Depends(_manager), db=Depends(get_supabase)):
+async def post_adjust(body: AdjustIn, org: dict = Depends(_handler), db=Depends(get_supabase)):
     try:
         return ok(data=stock.adjust(db, _org_id(org), _uid(org), body.model_dump(mode="json")))
     except stock.StockError as e:
@@ -287,7 +344,7 @@ async def post_adjust(body: AdjustIn, org: dict = Depends(_manager), db=Depends(
 
 
 @router.patch("/inventory/items")
-async def patch_item(body: ItemPatch, org: dict = Depends(_manager), db=Depends(get_supabase)):
+async def patch_item(body: ItemPatch, org: dict = Depends(_handler), db=Depends(get_supabase)):
     try:
         return ok(data=stock.update_item(db, _org_id(org), body.model_dump(mode="json", exclude_unset=True)))
     except stock.StockError as e:
@@ -300,19 +357,21 @@ async def patch_item(body: ItemPatch, org: dict = Depends(_manager), db=Depends(
 async def get_transfers(status_: Optional[Literal["in_transit", "done", "cancelled"]] = Query(None, alias="status"),
                         org: dict = Depends(get_current_org), db=Depends(get_supabase)):
     return ok(data={"transfers": transfers.list_transfers(db, _org_id(org), status_),
-                    "can_manage": stock.is_manager(org)})
+                    "can_manage": stock.can_handle(org)})
 
 
 @router.post("/inventory/transfers")
-async def post_transfer(body: TransferIn, org: dict = Depends(_manager), db=Depends(get_supabase)):
+async def post_transfer(body: TransferIn, org: dict = Depends(_handler), db=Depends(get_supabase)):
+    """STOCK-4: out of a warehouse (not the owner) -> {"request": ...}, goods held; otherwise the move, sent."""
     try:
-        return ok(data=transfers.send(db, _org_id(org), _uid(org), body.model_dump(mode="json")))
+        out = move_requests.request_transfer(db, org, body.model_dump(mode="json"))
+        return ok(data=out["transfer"] if "transfer" in out else out)   # sent: the move itself, as before
     except stock.StockError as e:
         return _fail(e)
 
 
 @router.post("/inventory/transfers/{transfer_id}/receive")
-async def post_transfer_receive(transfer_id: UUID, body: ReceiveTransferIn, org: dict = Depends(_manager),
+async def post_transfer_receive(transfer_id: UUID, body: ReceiveTransferIn, org: dict = Depends(_handler),
                                 db=Depends(get_supabase)):
     try:
         data = body.model_dump(mode="json")
@@ -322,8 +381,87 @@ async def post_transfer_receive(transfer_id: UUID, body: ReceiveTransferIn, org:
 
 
 @router.post("/inventory/transfers/{transfer_id}/cancel")
-async def post_transfer_cancel(transfer_id: UUID, org: dict = Depends(_manager), db=Depends(get_supabase)):
+async def post_transfer_cancel(transfer_id: UUID, org: dict = Depends(_handler), db=Depends(get_supabase)):
     try:
         return ok(data=transfers.cancel(db, _org_id(org), _uid(org), str(transfer_id)))
+    except stock.StockError as e:
+        return _fail(e)
+
+
+# ───────────────────────────── STOCK-4: the owner's approval, deliveries, records ─────────────────────────────
+
+@router.get("/inventory/requests")
+async def get_requests(status_: Optional[Literal["open", "pending", "approved", "done", "rejected", "cancelled"]] =
+                       Query(None, alias="status"), org: dict = Depends(get_current_org), db=Depends(get_supabase)):
+    return ok(data={"requests": move_requests.list_requests(db, _org_id(org), status_),
+                    "is_owner": stock.is_owner(org), "can_handle": stock.can_handle(org), "me": _uid(org)})
+
+
+@router.post("/inventory/requests/{request_id}/approve")
+async def post_request_approve(request_id: UUID, body: DecisionIn, org: dict = Depends(get_current_org),
+                               db=Depends(get_supabase)):
+    try:
+        return ok(data=move_requests.decide(db, org, str(request_id), True, body.note))
+    except stock.StockError as e:
+        return _fail(e)
+
+
+@router.post("/inventory/requests/{request_id}/reject")
+async def post_request_reject(request_id: UUID, body: DecisionIn, org: dict = Depends(get_current_org),
+                              db=Depends(get_supabase)):
+    try:
+        return ok(data=move_requests.decide(db, org, str(request_id), False, body.note))
+    except stock.StockError as e:
+        return _fail(e)
+
+
+@router.post("/inventory/requests/{request_id}/send")
+async def post_request_send(request_id: UUID, org: dict = Depends(_handler), db=Depends(get_supabase)):
+    try:
+        return ok(data=move_requests.send_approved(db, org, str(request_id)))
+    except stock.StockError as e:
+        return _fail(e)
+
+
+@router.post("/inventory/requests/{request_id}/cancel")
+async def post_request_cancel(request_id: UUID, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
+    try:
+        return ok(data=move_requests.cancel(db, org, str(request_id)))
+    except stock.StockError as e:
+        return _fail(e)
+
+
+@router.post("/inventory/deliveries/{invoice_id}/request")
+async def post_delivery_request(invoice_id: UUID, body: DeliveryRequestIn, org: dict = Depends(get_current_org),
+                                db=Depends(get_supabase)):
+    data = body.model_dump(mode="json")
+    try:
+        return ok(data=move_requests.request_delivery(db, org, str(invoice_id), data.get("lines"), data.get("note")))
+    except stock.StockError as e:
+        return _fail(e)
+
+
+@router.post("/inventory/deliveries/{invoice_id}")
+async def post_delivery(invoice_id: UUID, body: DeliverNowIn, org: dict = Depends(get_current_org),
+                        db=Depends(get_supabase)):
+    """Mark goods delivered from the Inventory page (the Inventory Manager can't open invoices)."""
+    from app.services import invoice_stock_service as inv_stock
+    data = body.model_dump(mode="json")
+    try:
+        doc = inv_stock.deliver(db, org, str(invoice_id), data["lines"], data.get("note"))
+    except stock.StockError as e:
+        return _fail(e)
+    return ok(data={"id": doc.get("id"), "number": doc.get("number"), "status": doc.get("status")})
+
+
+@router.get("/inventory/records")
+async def get_records(period: Literal["week", "month", "custom"] = "week", start: Optional[date] = None,
+                      end: Optional[date] = None, location_id: Optional[UUID] = None,
+                      org: dict = Depends(get_current_org), db=Depends(get_supabase)):
+    if not (stock.can_handle(org) or stock.is_owner(org)):
+        return _fail(stock.StockError("FORBIDDEN", "Only managers and the Inventory Manager can see these records.", 403))
+    try:
+        lo, hi = move_requests.period(period, start, end)
+        return ok(data=move_requests.records(db, _org_id(org), lo, hi, str(location_id) if location_id else None))
     except stock.StockError as e:
         return _fail(e)
