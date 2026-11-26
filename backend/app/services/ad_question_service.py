@@ -11,6 +11,10 @@ those questions in organisations.ad_questions, each with what to do:
                 `reply` (if set) as a one-line acknowledgement.
 Matching ignores case, punctuation and spacing. Existing customers are never intercepted. Anything that does not match
 falls through to the normal flow. S14: nothing here raises into the webhook.
+
+AD-Q-2: a bot_catalog lead is not given to a rep at first. If the customer writes again with something real (a question,
+a size, a photo, a voice note), follow_up() gives the lead to the rep on shift. Plain "ok" / "thanks" / "good night"
+does not count. The message itself still goes through the normal flow.
 """
 from __future__ import annotations
 
@@ -144,3 +148,66 @@ def handle(db, number_row: dict, sender_phone: str, contact_name: Optional[str],
     except Exception as exc:
         logger.warning("ad_question.handle failed: %s", exc)
         return False
+
+
+# ---------------------------------------------------------------------------
+# AD-Q-2: a real follow-up after the bot's catalogue answer goes to a rep
+# ---------------------------------------------------------------------------
+
+SMALL_TALK = {
+    "ok", "okay", "okk", "okay o", "ok o", "k", "kk", "alright", "alright thanks", "alright thank you", "all right",
+    "thanks", "thank you", "thank u", "thanks a lot", "thanks so much", "thank you so much", "ok thanks", "ok thank you",
+    "okay thanks", "okay thank you", "noted", "noted thanks", "fine", "cool", "great", "nice", "good", "yes", "no",
+    "good night", "goodnight", "good morning", "good afternoon", "good evening", "hi", "hello", "hey", "bye",
+    "browse catalog", "browse catalogue", "view catalog", "view catalogue",
+}
+
+
+def is_real_follow_up(msg_type: Optional[str], content: Optional[str]) -> bool:
+    """A message worth a person's time: any photo, voice note, document or location, or text that is more than a plain
+    acknowledgement or greeting. Emoji-only text does not count."""
+    if msg_type and msg_type != "text":
+        return msg_type not in ("reaction", "sticker", "unsupported", "system")
+    t = norm(content)
+    if not t:
+        return False
+    return t not in SMALL_TALK
+
+
+def _came_from_bot_answer(db, org_id: str, lead_id: str) -> bool:
+    rows = (db.table("lead_timeline").select("metadata").eq("org_id", org_id).eq("lead_id", lead_id)
+            .eq("event_type", "ad_question").execute().data) or []
+    return any(((r or {}).get("metadata") or {}).get("action") == "bot_catalog" for r in rows)
+
+
+def follow_up(db, number_row: dict, lead_id: Optional[str], msg_type: Optional[str], content: Optional[str]) -> Optional[str]:
+    """AD-Q-2: give an unassigned bot_catalog lead to the rep on shift when the customer writes something real.
+    Returns the rep's id when assigned, else None. Never raises; never stops the normal flow."""
+    try:
+        org_id = (number_row or {}).get("org_id")
+        if not org_id or not lead_id:
+            return None
+        if (number_row or {}).get("wa_sales_mode") in ("ai_agent", "webchat_redirect"):
+            return None
+        if not is_real_follow_up(msg_type, content):
+            return None
+        rows = (db.table("leads").select("assigned_to, ai_owned, deleted_at").eq("id", lead_id).eq("org_id", org_id)
+                .limit(1).execute().data) or []
+        if not rows or rows[0].get("assigned_to") or rows[0].get("ai_owned") or rows[0].get("deleted_at"):
+            return None
+        if not _came_from_bot_answer(db, org_id, lead_id):
+            return None
+        from app.services.lead_assignment_service import auto_assign_lead
+        rep_id = auto_assign_lead(db, org_id, lead_id, "ready_to_buy", None)
+        if rep_id:
+            try:
+                from app.services.lead_service import write_timeline_event
+                write_timeline_event(db, org_id, lead_id, event_type="ad_question_follow_up", actor_id=None,
+                                     description="Wrote back after the catalogue answer, so the lead went to the rep on shift",
+                                     metadata={"rep_id": rep_id})
+            except Exception:
+                pass
+        return rep_id
+    except Exception as exc:
+        logger.warning("[AD-Q-2] follow_up failed lead=%s: %s", lead_id, exc)
+        return None

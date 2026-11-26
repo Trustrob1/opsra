@@ -1341,6 +1341,16 @@ def _handle_inbound_message(db, message: dict, contact_name: str, phone_number_i
         except Exception:
             logger.exception("[AD-Q-1] ad question failed org=%s", number_row.get("org_id"))
 
+    # ── AD-Q-2: the customer wrote back after the bot's catalogue answer ──────────────────
+    # A real question (not "ok"/"thanks") gives the still-unassigned lead to the rep on shift. Never stops the flow.
+    if lead_id and number_row and number_row.get("org_id") and not customer_id:
+        try:
+            if not _is_org_owner(db, number_row.get("org_id"), sender_phone):
+                from app.services import ad_question_service as _adq2
+                _adq2.follow_up(db, number_row, lead_id, msg_type, content)
+        except Exception:
+            logger.exception("[AD-Q-2] follow-up assign failed org=%s", number_row.get("org_id"))
+
     # ── ORDER-GATE-1: "Order via WhatsApp" from the catalogue = ready to buy ──────────────
     if _order_tag and number_row and number_row.get("org_id") and not customer_id:
         try:
