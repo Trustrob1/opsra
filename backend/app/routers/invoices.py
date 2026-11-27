@@ -15,6 +15,8 @@ Plan feature: `invoices` (whole router, plan_gate.require).
   DELETE /invoices/{id}                     delete a draft
   POST   /invoices/{id}/issue               number it and lock it
   POST   /invoices/{id}/void                void an issued document (admin, reason required)
+  POST   /invoices/{id}/revise              REVISE-1: void an unpaid issued document and get an editable copy (maker or manager)
+  PUT    /invoices/settings/rep-regions     REVISE-1: each sales rep's home region (admin)
   POST   /invoices/{id}/accept | /decline   staff records the customer's answer to a quote
   POST   /invoices/{id}/convert             quote -> new draft invoice
   GET    /invoices/{id}/pdf                 the PDF (drafts carry a DRAFT mark)
@@ -114,6 +116,14 @@ class DocCreate(_DocFields):
 
 class DocPatch(_DocFields):
     pass
+
+
+class ReviseIn(_Strict):   # REVISE-1
+    reason: Optional[str] = Field(None, max_length=200)
+
+
+class RepRegionsIn(_Strict):   # REVISE-1: {user_id: region or null}
+    regions: dict[str, Optional[str]] = Field(default_factory=dict)
 
 
 class VoidIn(_Strict):
@@ -273,6 +283,15 @@ def _mine(org: dict) -> Optional[str]:
     return None if stock.is_manager(org) else (org.get("id") or "-")
 
 
+def _rep(org: dict, db) -> Optional[dict]:
+    """REVISE-1: None for managers (any region, any bank account); for a sales rep {"region": their home region}."""
+    from app.services import inventory_service as stock
+    from app.services import invoice_sales_service as sales
+    if stock.is_manager(org):
+        return None
+    return {"region": sales.rep_region(db, org["org_id"], org.get("id"))}
+
+
 def _not_found(what: str) -> HTTPException:
     return HTTPException(status_code=404, detail={"success": False, "data": None, "error": {
         "code": "NOT_FOUND", "message": f"{what} not found.", "field": None}})
@@ -306,7 +325,12 @@ _OWN_RECEIPT = [Depends(_own_receipt)]
 
 @router.get("/invoices/settings")
 async def get_settings(org: dict = Depends(get_current_org), db=Depends(get_supabase)):
-    return ok(inv.get_settings(db, org["org_id"]))
+    data = inv.get_settings(db, org["org_id"])
+    rep = _rep(org, db)   # REVISE-1: what this person may pick on an invoice
+    data["my_region"] = (rep or {}).get("region")
+    data["can_pick_region"] = not (rep and rep.get("region"))
+    data["can_pick_any_bank"] = rep is None
+    return ok(data)
 
 
 @router.put("/invoices/settings")
@@ -320,8 +344,12 @@ async def put_settings(body: SettingsIn, org: dict = Depends(require_admin), db=
 @router.get("/invoices/settings/people")
 async def settings_people(org: dict = Depends(require_admin), db=Depends(get_supabase)):
     """REPORT-1: active staff for the payment pickers (who waits, who may confirm). Managers never wait."""
-    rows = db.table("users").select("id, full_name, email, is_active, roles(template, permissions)") \
-        .eq("org_id", org["org_id"]).execute().data or []
+    try:   # REVISE-1: each person's home region
+        rows = db.table("users").select("id, full_name, email, is_active, sales_region, roles(template, permissions)") \
+            .eq("org_id", org["org_id"]).execute().data or []
+    except Exception:
+        rows = db.table("users").select("id, full_name, email, is_active, roles(template, permissions)") \
+            .eq("org_id", org["org_id"]).execute().data or []
     out = []
     for u in rows:
         if u.get("is_active") is False:
@@ -331,8 +359,21 @@ async def settings_people(org: dict = Depends(require_admin), db=Depends(get_sup
         perms = (role or {}).get("permissions") or {}
         manager = (role or {}).get("template") in ("owner", "ops_manager") or perms.get("is_admin") is True
         out.append({"id": u["id"], "name": u.get("full_name") or u.get("email"), "email": u.get("email"),
-                    "manager": manager})
+                    "manager": manager, "region": u.get("sales_region")})
     out.sort(key=lambda x: str(x["name"] or "").lower())
+    return ok(out)
+
+
+@router.put("/invoices/settings/rep-regions")
+async def put_rep_regions(body: RepRegionsIn, org: dict = Depends(require_admin), db=Depends(get_supabase)):
+    """REVISE-1: set each sales rep's home region (blank = none)."""
+    from app.services import invoice_sales_service as sales
+    org_id, user_id = _ids(org)
+    try:
+        out = sales.set_rep_regions(db, org_id, body.regions)
+    except inv.InvoiceError as e:
+        return _fail(e)
+    inv._audit(db, org_id, user_id, "invoice_settings.rep_regions", None, {"regions": out})
     return ok(out)
 
 
@@ -511,7 +552,7 @@ async def list_docs(
 async def create_doc(body: DocCreate, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
     org_id, user_id = _ids(org)
     try:
-        return ok(inv.create_draft(db, org_id, user_id, _body(body)))
+        return ok(inv.create_draft(db, org_id, user_id, _body(body), rep=_rep(org, db)))
     except inv.InvoiceError as e:
         return _fail(e)
 
@@ -544,7 +585,7 @@ async def get_doc(doc_id: UUID, org: dict = Depends(get_current_org), db=Depends
 async def patch_doc(doc_id: UUID, body: DocPatch, org: dict = Depends(get_current_org), db=Depends(get_supabase)):
     org_id, user_id = _ids(org)
     try:
-        return ok(inv.update_draft(db, org_id, user_id, str(doc_id), _body(body)))
+        return ok(inv.update_draft(db, org_id, user_id, str(doc_id), _body(body), rep=_rep(org, db)))
     except inv.InvoiceError as e:
         return _fail(e)
 
@@ -633,6 +674,17 @@ async def void_doc(doc_id: UUID, body: VoidIn, org: dict = Depends(require_admin
     org_id, user_id = _ids(org)
     try:
         return ok(inv.void(db, org_id, user_id, str(doc_id), body.reason.strip()))
+    except inv.InvoiceError as e:
+        return _fail(e)
+
+
+@router.post("/invoices/{doc_id}/revise", status_code=201, dependencies=_OWN_DOC)
+async def revise_doc(doc_id: UUID, body: Optional[ReviseIn] = None, org: dict = Depends(get_current_org),
+                     db=Depends(get_supabase)):
+    """REVISE-1: the maker (or a manager) voids an unpaid issued document and gets an editable copy to issue again."""
+    org_id, user_id = _ids(org)
+    try:
+        return ok(inv.revise(db, org_id, user_id, str(doc_id), body.reason if body else None))
     except inv.InvoiceError as e:
         return _fail(e)
 

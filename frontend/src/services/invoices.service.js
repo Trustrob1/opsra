@@ -38,6 +38,8 @@ export const updateDoc  = (id, body) => api.patch(`/api/v1/invoices/${id}`, body
 export const deleteDoc  = (id) => api.delete(`/api/v1/invoices/${id}`).then(d)
 export const issueDoc   = (id, sources) => api.post(`/api/v1/invoices/${id}/issue`, sources ? { sources } : undefined).then(d)
 export const voidDoc    = (id, reason) => api.post(`/api/v1/invoices/${id}/void`, { reason }).then(d)
+// REVISE-1: void an unpaid issued document and get an editable copy
+export const reviseDoc  = (id, reason) => api.post(`/api/v1/invoices/${id}/revise`, { reason: reason || null }).then(d)
 export const acceptQuote  = (id) => api.post(`/api/v1/invoices/${id}/accept`).then(d)
 export const declineQuote = (id) => api.post(`/api/v1/invoices/${id}/decline`).then(d)
 export const convertQuote = (id) => api.post(`/api/v1/invoices/${id}/convert`).then(d)
@@ -91,6 +93,8 @@ export const downloadSalesReport = (params, format) =>
   savePdf(`/api/v1/reports/sales?${new URLSearchParams({ ...clean(params), format })}`)
 export const sendTestReport      = (kind) => api.post('/api/v1/reports/send-test', { kind }).then(d)
 export const getSettingsPeople   = () => api.get('/api/v1/invoices/settings/people').then(d)
+// REVISE-1: each sales rep's home region ({ user_id: region or null })
+export const saveRepRegions      = (regions) => api.put('/api/v1/invoices/settings/rep-regions', { regions }).then(d)
 
 /** Fetch the PDF with the login token and save it (a plain link can't carry the token). */
 export const downloadDocPdf = (id, filename) => savePdf(`/api/v1/invoices/${id}/pdf`, filename)

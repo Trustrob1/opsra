@@ -12,16 +12,16 @@
  * Totals shown while typing are a preview; the server works out the real ones on every save.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { X, Plus, Trash2, Download, Search, Package, CheckCircle2, XCircle, FileText, Ban, Sparkles } from 'lucide-react'
+import { X, Plus, Trash2, Download, Search, Package, CheckCircle2, XCircle, FileText, Ban, Sparkles, Pencil } from 'lucide-react'
 import { ds } from '../../utils/ds'
 import useAuthStore from '../../store/authStore'
 import { useIsMobile } from '../../hooks/useIsMobile'
 import {
-  getInvoiceSettings, getDoc, createDoc, updateDoc, deleteDoc, issueDoc, voidDoc, acceptQuote, declineQuote,
+  getInvoiceSettings, getDoc, createDoc, updateDoc, deleteDoc, issueDoc, voidDoc, reviseDoc, acceptQuote, declineQuote,
   convertQuote, pickContacts, pickProducts, downloadDocPdf, apiError, aiDraftLines,
   errorCode, getStockCheck, requestStock,   // STOCK-2b
 } from '../../services/invoices.service'
-import { naira, niceDate, todayYmd, TYPE_LABEL, lab, inp, btnP, btnG, btnDanger, disabled } from './invoiceUi'
+import { naira, niceDate, todayYmd, TYPE_LABEL, lab, inp, btnP, btnG, btnDanger, disabled, accountsForRegion } from './invoiceUi'
 import StatusPill from './StatusPill'
 import SendPanel from './SendPanel'   // INV-3
 import PaymentsPanel from './PaymentsPanel'   // INV-4
@@ -102,17 +102,25 @@ export default function InvoiceEditor({ docId: startId = null, initial = null, o
   const [err, setErr] = useState('')
   const [voiding, setVoiding] = useState(false)
   const [voidReason, setVoidReason] = useState('')
+  const [revising, setRevising] = useState(false)   // REVISE-1
+  const [reviseReason, setReviseReason] = useState('')
   const [short, setShort] = useState(null)   // STOCK-2b: stock check when the location is short
   const autoMade = useRef(false)
   const dirty = useRef(false)
   const regions = useRegions()   // INV-SALES-2
   const stock = useStock()         // STOCK-2
 
+  // REVISE-1: a sales rep with a home region always uses it.
+  const lockRegion = settings && settings.can_pick_region === false ? settings.my_region : null
   // A draft with no region starts on the region this person used last (not counted as a change).
   useEffect(() => {
+    if (lockRegion) {
+      setForm((f) => (f && f.region !== lockRegion && (!doc || doc.status === 'draft') ? { ...f, region: lockRegion } : f))
+      return
+    }
     if (!regions.length) return
     setForm((f) => (f && !f.region && (!doc || doc.status === 'draft') ? { ...f, region: lastRegion(regions) } : f))
-  }, [regions, doc])
+  }, [regions, doc, lockRegion])
 
   // STOCK-2: until the person picks a location, a draft invoice follows the region's location (else last used, else main).
   useEffect(() => {
@@ -251,6 +259,12 @@ export default function InvoiceEditor({ docId: startId = null, initial = null, o
     if (voidReason.trim().length < 3) { setErr('Say briefly why it is being voided.'); return }
     act('void', (id) => voidDoc(id, voidReason.trim())).then(() => { setVoiding(false); setVoidReason('') })
   }
+  const onRevise = () => run('revise', async () => {   // REVISE-1: old one voided, the copy opens to correct and issue
+    const nd = await reviseDoc(docId, reviseReason.trim())
+    autoMade.current = false; dirty.current = false
+    setRevising(false); setReviseReason('')
+    setDocId(nd.id); setDoc(nd); setForm(fromDoc(nd)); onChanged?.()
+  })
   const onPdf = () => run('pdf', () => downloadDocPdf(docId))
 
   const shell = {
@@ -287,7 +301,12 @@ export default function InvoiceEditor({ docId: startId = null, initial = null, o
             </div>
           )}
           {form && pending && <PendingStock doc={doc} onChanged={afterStock} />}
-          {form && editable && <DraftForm form={form} set={set} settings={settings} preview={preview} isNew={!doc} isMobile={isMobile} regions={regions} stock={stock} />}
+          {form && editable && doc?.revised_from_id && (
+            <div role="status" style={{ background: ds.mint, border: `1px solid ${ds.teal}`, color: ds.dark, borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 14 }}>
+              This is a revision of {TYPE_LABEL[kind].toLowerCase()} {doc.revised_from_number || ''}, which has been voided. Make your changes, then issue it and send it to the customer.
+            </div>
+          )}
+          {form && editable && <DraftForm form={form} set={set} settings={settings} preview={preview} isNew={!doc} isMobile={isMobile} regions={regions} stock={stock} lockRegion={lockRegion} />}
           {form && !editable && !pending && <IssuedView doc={doc} isAdmin={isAdmin} onPaid={() => { load(doc.id).catch(() => {}); onChanged?.() }} />}
         </div>
 
@@ -307,10 +326,22 @@ export default function InvoiceEditor({ docId: startId = null, initial = null, o
                 <button type="button" style={btnG} onClick={() => { setVoiding(false); setVoidReason('') }}>Keep it</button>
                 <button type="button" style={disabled({ ...btnP, background: ds.red }, !!busy)} disabled={!!busy} onClick={onVoid}>{busy === 'void' ? 'Voiding…' : 'Void it'}</button>
               </div>
+            ) : revising ? (
+              <div style={{ display: 'flex', gap: 10, width: '100%', flexWrap: 'wrap', alignItems: 'center' }}>
+                <span style={{ color: ds.dark, fontSize: 14, flexBasis: '100%' }}>
+                  {TYPE_LABEL[kind]} {doc.number} will be voided and a copy opens for you to correct and issue again.
+                </span>
+                <input style={{ ...inp, flex: 1, minWidth: 200 }} autoFocus maxLength={200} placeholder="What needs changing? (optional) e.g. wrong size"
+                  value={reviseReason} onChange={(e) => setReviseReason(e.target.value)} aria-label="Reason for revising" />
+                <button type="button" style={btnG} onClick={() => { setRevising(false); setReviseReason('') }}>Keep it</button>
+                <button type="button" style={disabled(btnP, !!busy)} disabled={!!busy} onClick={onRevise}>{busy === 'revise' ? 'Revising…' : 'Revise'}</button>
+              </div>
             ) : (
               <>
                 {isAdmin && ['issued', 'accepted', 'declined'].includes(doc.status) && Number(doc.amount_paid || 0) === 0 &&
                   <button type="button" style={{ ...btnDanger, marginRight: 'auto' }} onClick={() => setVoiding(true)}><Ban size={16} />Void</button>}
+                {['issued', 'accepted', 'declined'].includes(doc.status) && Number(doc.amount_paid || 0) === 0 && !(doc.pending_payments || []).length &&
+                  <button type="button" style={disabled(btnG, !!busy)} disabled={!!busy} onClick={() => setRevising(true)}><Pencil size={16} />Revise</button>}
                 <button type="button" style={disabled(btnG, !!busy)} disabled={!!busy} onClick={onPdf}><Download size={16} />{busy === 'pdf' ? 'Preparing…' : 'Download PDF'}</button>
                 {kind === 'quote' && doc.status === 'issued' && <>
                   <button type="button" style={disabled(btnG, !!busy)} disabled={!!busy} onClick={() => act('decline', declineQuote)}><XCircle size={16} />Mark declined</button>
@@ -331,7 +362,7 @@ export default function InvoiceEditor({ docId: startId = null, initial = null, o
 
 // ───────────────────────────── draft form ─────────────────────────────
 
-function DraftForm({ form, set, settings, preview, isNew, isMobile, regions, stock }) {
+function DraftForm({ form, set, settings, preview, isNew, isMobile, regions, stock, lockRegion }) {
   // STOCK-2: what is left at the chosen location, per size, for the products on this invoice
   const kind0 = form.doc_type
   const stockOn = kind0 === 'invoice' && !!stock?.enabled && stock.locations.length > 0
@@ -339,7 +370,9 @@ function DraftForm({ form, set, settings, preview, isNew, isMobile, regions, sto
   const leftFor = (l, size) => (avail ? Number(avail[l.product_id]?.[size ?? ''] ?? 0) : null)
   const locName = stock?.locations.find((x) => x.id === form.location_id)?.name || 'this location'
   const grid2 = { display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }
-  const bankList = settings?.bank_accounts || []   // BANK-1
+  const allBanks = settings?.bank_accounts || []   // BANK-1
+  // REVISE-1: a sales rep sees only the accounts for the invoice's region
+  const bankList = settings && settings.can_pick_any_bank === false ? accountsForRegion(allBanks, form.region) : allBanks
   const bank = pickBank(bankList, form)
   const setLine = (key, patch) => set({ items: form.items.map((l) => (l.key === key ? { ...l, ...patch } : l)) })
   const removeLine = (key) => set({ items: form.items.filter((l) => l.key !== key) })
@@ -369,7 +402,9 @@ function DraftForm({ form, set, settings, preview, isNew, isMobile, regions, sto
         <ContactSearch onPick={(c) => set({ lead_id: c.id, customer_name: c.full_name || '', customer_phone: c.whatsapp || c.phone || '', customer_email: c.email || '', customer_address: c.location || '' })} />
         {(regions?.length > 0 || stockOn) && (
           <div style={{ ...grid2, marginTop: 10 }}>
-            {regions?.length > 0 && <RegionSelect regions={regions} value={form.region} onChange={(v) => set({ region: v })} />}
+            {regions?.length > 0 && (lockRegion
+              ? <div><span style={lab}>Region</span><div style={{ ...inp, display: 'flex', alignItems: 'center', background: '#F7F8FA' }}>{lockRegion}</div><small style={{ color: ds.gray }}>Your region. An admin can change it in Invoice settings.</small></div>
+              : <RegionSelect regions={regions} value={form.region} onChange={(v) => set({ region: v, ...(settings?.can_pick_any_bank === false ? { bank_account_id: '', bank_picked: false } : {}) })} />)}
             {stockOn && (
               <div><label style={lab} htmlFor="inv-loc">Stock comes from</label>
                 <select id="inv-loc" style={{ ...inp, borderColor: form.location_id ? ds.border : ds.accent }} value={form.location_id}
@@ -381,6 +416,9 @@ function DraftForm({ form, set, settings, preview, isNew, isMobile, regions, sto
               </div>
             )}
           </div>
+        )}
+        {bankList.length === 1 && allBanks.length > 1 && bank && (
+          <div style={{ marginTop: 10, fontSize: 14, color: ds.dark }}><span style={lab}>Pay into</span>{' '}{bank.label} · {bank.bank_name} · {bank.account_number}</div>
         )}
         {bankList.length > 1 && (
           <div style={{ ...grid2, marginTop: 10 }}>
@@ -598,12 +636,13 @@ function IssuedView({ doc, isAdmin, onPaid }) {
       </div>
       {doc.notes && <div><div style={lab}>Note</div><div style={{ whiteSpace: 'pre-wrap' }}>{doc.notes}</div></div>}
       {doc.terms && <div><div style={lab}>Terms</div><div style={{ whiteSpace: 'pre-wrap' }}>{doc.terms}</div></div>}
-      {doc.status === 'void' && <div style={{ background: '#F3F4F6', borderRadius: 10, padding: 12, color: ds.gray }}>Voided {niceDate(doc.voided_at)}{doc.void_reason ? `: ${doc.void_reason}` : ''}</div>}
+      {doc.status === 'void' && <div style={{ background: '#F3F4F6', borderRadius: 10, padding: 12, color: ds.gray }}>Voided {niceDate(doc.voided_at)}{doc.void_reason ? `: ${doc.void_reason}` : ''}{doc.replaced_by ? ` Replaced by ${doc.replaced_by.number || 'a new draft'}.` : ''}</div>}
+      {doc.revised_from_number && <div style={{ color: ds.gray, fontSize: 13 }}>Revision of {doc.revised_from_number}.</div>}
       {doc.converted_from_id && <div style={{ color: ds.gray, fontSize: 13 }}>Made from a quote.</div>}
       {kind === 'invoice' && <PaymentsPanel doc={doc} isAdmin={isAdmin} onChanged={onPaid} />}
       {kind === 'invoice' && doc.stock_tracked && <StockPanel doc={doc} onChanged={onPaid} />}
       {doc.status !== 'void' && <SendPanel doc={doc} />}
-      <p style={{ color: ds.gray, fontSize: 13, margin: 0 }}>Issued documents can't be changed. To fix a mistake, void it and make a new one.</p>
+      <p style={{ color: ds.gray, fontSize: 13, margin: 0 }}>Issued documents can't be changed. To fix a mistake on an unpaid one, use Revise: it voids this one and opens a copy to correct and issue again.</p>
     </div>
   )
 }

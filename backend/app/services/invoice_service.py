@@ -201,13 +201,13 @@ def bank_accounts(settings: dict) -> list:
 
 
 def clean_bank_accounts(db, org_id: str, items) -> list:
-    """Check the accounts an admin saves: real account numbers, known regions, a region on one account only,
+    """Check the accounts an admin saves: real account numbers, known regions (a region may have several accounts),
     exactly one default (the first, if none is ticked)."""
     from app.services import invoice_sales_service as sales
     items = list(items or [])
     if len(items) > MAX_BANK_ACCOUNTS:
         raise InvoiceError("VALIDATION_ERROR", f"You can have up to {MAX_BANK_ACCOUNTS} bank accounts.", 422, "bank_accounts")
-    out, used_ids, used_regions = [], set(), set()
+    out, used_ids = [], set()
     for raw in items:
         if not isinstance(raw, dict):
             raise InvoiceError("VALIDATION_ERROR", "Each bank account needs its details.", 422, "bank_accounts")
@@ -221,11 +221,7 @@ def clean_bank_accounts(db, org_id: str, items) -> list:
         if not _BANK_ID.match(aid) or aid in used_ids:
             aid = secrets.token_hex(4)
         used_ids.add(aid)
-        region = sales.clean_region(db, org_id, raw.get("region")) if raw.get("region") else None
-        if region:
-            if region.lower() in used_regions:
-                raise InvoiceError("VALIDATION_ERROR", f"{region} is already linked to another account.", 422, "bank_accounts")
-            used_regions.add(region.lower())
+        region = sales.clean_region(db, org_id, raw.get("region")) if raw.get("region") else None   # REVISE-1: a region may have several accounts
         out.append({"id": aid, "label": (str(raw.get("label") or "").strip()[:60] or bank),
                     "bank_name": bank, "account_name": (str(raw.get("account_name") or "").strip()[:200] or None),
                     "account_number": number, "region": region, "is_default": bool(raw.get("is_default"))})
@@ -263,11 +259,26 @@ def settings_for_doc(settings: dict, doc: Optional[dict]) -> dict:
     return out
 
 
-def clean_bank_account_id(settings: dict, value) -> Optional[str]:
+def accounts_for_region(settings: dict, region: Optional[str]) -> list:
+    """REVISE-1: the accounts a sales rep may pick for a region: the ones linked to it; if none are, the accounts
+    linked to no region (else every account). No region: every account."""
+    accts = bank_accounts(settings)
+    want = (region or "").strip().lower()
+    if not want:
+        return accts
+    mine = [a for a in accts if (a.get("region") or "").lower() == want]
+    return mine or [a for a in accts if not a.get("region")] or accts
+
+
+def clean_bank_account_id(settings: dict, value, region: Optional[str] = None, restrict: bool = False) -> Optional[str]:
+    """restrict (REVISE-1): a sales rep may only pick one of the region's accounts."""
     text = str(value or "").strip()
     if not text:
         return None
-    if not any(a["id"] == text for a in bank_accounts(settings)):
+    pool = accounts_for_region(settings, region) if restrict else bank_accounts(settings)
+    if not any(a["id"] == text for a in pool):
+        if restrict and region:
+            raise InvoiceError("VALIDATION_ERROR", f"Choose one of the {region} bank accounts.", 422, "bank_account_id")
         raise InvoiceError("VALIDATION_ERROR", "Choose one of your bank accounts.", 422, "bank_account_id")
     return text
 
@@ -447,6 +458,8 @@ def get_doc(db, org_id: str, doc_id: str) -> dict:
         for i in doc["items"]:
             if i.get("stock_location_id"):
                 i["stock_location_name"] = names.get(i["stock_location_id"])
+    if doc.get("revised_from_id") or doc.get("status") == "void":
+        _revision_links(db, org_id, doc)
     if doc.get("status") == "draft":   # INV-SALES-2: the editor offers each product line's sizes
         pids = sorted({i["product_id"] for i in doc["items"] if i.get("product_id")})
         if pids:
@@ -495,7 +508,10 @@ def list_docs(db, org_id: str, doc_type: Optional[str] = None, status: Optional[
 
 # ───────────────────────────── drafts ─────────────────────────────
 
-def create_draft(db, org_id: str, user_id: Optional[str], data: dict) -> dict:
+def create_draft(db, org_id: str, user_id: Optional[str], data: dict, rep: Optional[dict] = None) -> dict:
+    """rep (REVISE-1): {"region": the rep's own region or None} for a sales rep; None for managers."""
+    if rep and rep.get("region"):
+        data = {**data, "region": rep["region"]}
     doc_type = data.get("doc_type")
     if doc_type not in DOC_TYPES:
         raise InvoiceError("VALIDATION_ERROR", "doc_type must be quote or invoice.", 422, "doc_type")
@@ -518,8 +534,8 @@ def create_draft(db, org_id: str, user_id: Optional[str], data: dict) -> dict:
     if data.get("location_id") is not None:   # STOCK-2
         from app.services import invoice_stock_service as inv_stock
         row["location_id"] = inv_stock.clean_location(db, org_id, data.get("location_id"))
-    if data.get("bank_account_id"):   # BANK-1
-        row["bank_account_id"] = clean_bank_account_id(settings, data.get("bank_account_id"))
+    if data.get("bank_account_id"):   # BANK-1 (REVISE-1: a rep picks from the region's accounts)
+        row["bank_account_id"] = clean_bank_account_id(settings, data.get("bank_account_id"), row.get("region"), rep is not None)
     res = db.table("invoices").insert(row).execute()
     doc = res.data[0]
     _write_items(db, org_id, doc["id"], totals["lines"])
@@ -543,8 +559,13 @@ def _draft_or_raise(db, org_id: str, doc_id: str) -> dict:
     return doc
 
 
-def update_draft(db, org_id: str, user_id: Optional[str], doc_id: str, data: dict) -> dict:
+def update_draft(db, org_id: str, user_id: Optional[str], doc_id: str, data: dict, rep: Optional[dict] = None) -> dict:
+    """rep (REVISE-1): as create_draft; a rep with a region keeps it on every save."""
     doc = _draft_or_raise(db, org_id, doc_id)
+    if rep and rep.get("region") and (doc.get("region") or "") != rep["region"]:
+        data = {**data, "region": rep["region"]}
+    elif rep and rep.get("region"):
+        data = {k: v for k, v in data.items() if k != "region"}
     settings = get_settings(db, org_id)
     patch: dict = {}
     if "lead_id" in data or "customer_id" in data or any(k in data for k in
@@ -565,8 +586,13 @@ def update_draft(db, org_id: str, user_id: Optional[str], doc_id: str, data: dic
     if "location_id" in data:   # STOCK-2
         from app.services import invoice_stock_service as inv_stock
         patch["location_id"] = inv_stock.clean_location(db, org_id, data.get("location_id"))
-    if "bank_account_id" in data:   # BANK-1
-        patch["bank_account_id"] = clean_bank_account_id(settings, data.get("bank_account_id"))
+    if "bank_account_id" in data:   # BANK-1 (REVISE-1: a rep picks from the region's accounts)
+        region = patch.get("region", doc.get("region"))
+        patch["bank_account_id"] = clean_bank_account_id(settings, data.get("bank_account_id"), region, rep is not None)
+    elif rep is not None and "region" in patch and doc.get("bank_account_id"):
+        # the region changed: an account picked for the old region falls back to the new region's account
+        if not any(a["id"] == doc["bank_account_id"] for a in accounts_for_region(settings, patch.get("region"))):
+            patch["bank_account_id"] = None
     if "items" in data:
         lines = _resolve_items(db, org_id, data.get("items") or [])
     else:
@@ -699,6 +725,80 @@ def void(db, org_id: str, user_id: Optional[str], doc_id: str, reason: str) -> d
     _audit(db, org_id, user_id, f"{doc['doc_type']}.voided", doc["id"], {"reason": reason},
            {"status": doc.get("status")})
     return get_doc(db, org_id, doc["id"])
+
+
+# ───────────────────────────── REVISE-1: revise an unpaid document ─────────────────────────────
+
+COPY_FIELDS = ("doc_type", "lead_id", "customer_id", "customer_name", "customer_phone", "customer_email",
+               "customer_address", "currency", "notes", "terms", "region", "location_id", "bank_account_id")
+
+
+def revise_checks(db, org_id: str, doc: dict) -> None:
+    """Why an issued document cannot be revised, or nothing. Revising voids it and makes an editable copy."""
+    if doc.get("status") not in ("issued", "accepted", "declined"):
+        raise InvoiceError("INVALID_TRANSITION", "Only an issued document can be revised. A draft can just be edited.", 400)
+    if _money(doc.get("amount_paid") or 0) > 0:
+        raise InvoiceError("INVALID_TRANSITION", "Money has been recorded on this invoice, so it can't be revised. "
+                           "Ask an admin to sort out the payment first.", 400)
+    if doc.get("doc_type") == "invoice":
+        from app.services import payment_approval_service as approvals
+        if approvals.pending_for_invoice(db, org_id, doc["id"]):
+            raise InvoiceError("INVALID_TRANSITION", "A payment on this invoice is waiting for approval. "
+                               "It must be approved or rejected before the invoice can be revised.", 400)
+        items = db.table("invoice_items").select("stock_delivered").eq("invoice_id", doc["id"]).eq("org_id", org_id).execute()
+        if any(int(float(i.get("stock_delivered") or 0)) > 0 for i in ((items.data or []) if items else [])):
+            raise InvoiceError("INVALID_TRANSITION", "Goods on this invoice have been delivered, so it can't be revised.", 400)
+    else:
+        made = db.table("invoices").select("id").eq("org_id", org_id).eq("converted_from_id", doc["id"]) \
+            .neq("status", "void").limit(1).execute()
+        if made and made.data:
+            raise InvoiceError("INVALID_TRANSITION", "This quote has already become an invoice, so it can't be revised.", 400)
+
+
+def revise(db, org_id: str, user_id: Optional[str], doc_id: str, reason: Optional[str] = None) -> dict:
+    """Void an unpaid issued document and return an editable draft copy of it (revised_from_id points back).
+    The copy is made first, so a failed void leaves nothing behind."""
+    doc = _one(db, "invoices", org_id, doc_id)
+    if not doc:
+        raise _err_nf()
+    revise_checks(db, org_id, doc)
+    items = db.table("invoice_items").select("*").eq("invoice_id", doc["id"]).eq("org_id", org_id) \
+        .order("position").execute()
+    lines = (items.data or []) if items else []
+    totals = compute_totals(lines, doc.get("discount") or 0, doc.get("vat_rate") or 0)
+    due = _as_date(doc.get("due_date"))
+    row = {"org_id": org_id, "status": "draft", **{k: doc.get(k) for k in COPY_FIELDS}, **_totals_row(totals),
+           "due_date": str(due) if due and due >= today() else None,
+           "revised_from_id": doc["id"], "created_by": doc.get("created_by") or user_id}
+    res = db.table("invoices").insert(row).execute()
+    new = res.data[0]
+    _write_items(db, org_id, new["id"], [{**ln, "position": i} for i, ln in enumerate(totals["lines"])])
+    label = (doc.get("number") or "this document")
+    why = f"Revised: replaced by a new {doc['doc_type']}" + (f" ({reason.strip()[:200]})" if (reason or "").strip() else "")
+    try:
+        void(db, org_id, user_id, doc["id"], why)
+    except Exception:
+        db.table("invoice_items").delete().eq("invoice_id", new["id"]).eq("org_id", org_id).execute()
+        db.table("invoices").delete().eq("id", new["id"]).eq("org_id", org_id).eq("status", "draft").execute()
+        raise
+    _audit(db, org_id, user_id, f"{doc['doc_type']}.revised", doc["id"], {"new_id": new["id"], "number": label,
+                                                                          "reason": (reason or "").strip()[:200] or None})
+    return get_doc(db, org_id, new["id"])
+
+
+def _revision_links(db, org_id: str, doc: dict) -> None:
+    """REVISE-1: the number this draft revises, and the document that replaced a revised one."""
+    try:
+        if doc.get("revised_from_id"):
+            r = db.table("invoices").select("id, number").eq("org_id", org_id).eq("id", doc["revised_from_id"]).limit(1).execute()
+            doc["revised_from_number"] = r.data[0].get("number") if (r and r.data) else None
+        if doc.get("status") == "void":
+            r = db.table("invoices").select("id, number, status").eq("org_id", org_id).eq("revised_from_id", doc["id"]) \
+                .limit(1).execute()
+            if r and r.data:
+                doc["replaced_by"] = {"id": r.data[0]["id"], "number": r.data[0].get("number"), "status": r.data[0].get("status")}
+    except Exception as exc:   # never break opening a document
+        logger.warning("revision links failed org=%s doc=%s: %s", org_id, doc.get("id"), exc)
 
 
 def _quote_or_raise(db, org_id: str, doc_id: str) -> dict:

@@ -76,6 +76,41 @@ def region_required(db, org_id: str) -> bool:
     return bool(regions(db, org_id))
 
 
+# REVISE-1: each sales rep can have a home region (users.sales_region). Their invoices use it and they pick only
+# from that region's bank accounts. A region that no longer exists counts as none.
+
+def rep_region(db, org_id: str, user_id: Optional[str]) -> Optional[str]:
+    if not user_id:
+        return None
+    try:
+        res = db.table("users").select("sales_region").eq("org_id", org_id).eq("id", str(user_id)).limit(1).execute()
+        rows = _rows(res)
+        want = str((rows[0].get("sales_region") if rows else None) or "").strip().lower()
+    except Exception as exc:   # column not there yet: no home regions
+        logger.warning("invoice_sales: rep_region failed org=%s: %s", org_id, exc)
+        return None
+    if not want:
+        return None
+    return next((name for name in regions(db, org_id) if name.lower() == want), None)
+
+
+def set_rep_regions(db, org_id: str, data: dict) -> dict:
+    """{user_id: region or None} for this business's people. Unknown people are refused; regions must exist."""
+    data = dict(data or {})
+    if len(data) > 500:
+        raise inv.InvoiceError("VALIDATION_ERROR", "Too many people at once.", 422, "regions")
+    ids = sorted(str(k) for k in data)
+    found = {u["id"] for u in (_rows(db.table("users").select("id").eq("org_id", org_id).in_("id", ids).execute()) if ids else [])}
+    if set(ids) - found:
+        raise inv.InvoiceError("VALIDATION_ERROR", "Choose people from your team.", 422, "regions")
+    out = {}
+    for uid in ids:
+        region = clean_region(db, org_id, data[uid])
+        db.table("users").update({"sales_region": region}).eq("org_id", org_id).eq("id", uid).execute()
+        out[uid] = region
+    return out
+
+
 # ───────────────────────────── models ─────────────────────────────
 
 def commission_models(db, org_id: str) -> list:

@@ -4,13 +4,15 @@
  * Changes apply to documents issued from now on; issued ones keep the details they were issued with.
  * REPORT-1 — which reps' payments wait, who else may confirm them, and the emailed reports (daily sales, weekly).
  * BANK-1 — several bank accounts; each can be linked to a region (picked automatically on invoices) and one is the default.
+ * REVISE-1 — a region can have several accounts; each sales rep can have a home region (their invoices use it and they
+ *   choose only from that region's accounts).
  */
 import { useEffect, useRef, useState } from 'react'
 import { Upload, Trash2 } from 'lucide-react'
 import { ds } from '../../utils/ds'
 import { useIsMobile } from '../../hooks/useIsMobile'
 import { getInvoiceSettings, saveInvoiceSettings, uploadInvoiceLogo, removeInvoiceLogo, apiError, getSettingsPeople,
-  sendTestReport } from '../../services/invoices.service'
+  sendTestReport, saveRepRegions } from '../../services/invoices.service'
 import { card, lab, inp, btnP, btnG, disabled } from './invoiceUi'
 import { useRegions } from './useRegions'   // BANK-1
 
@@ -141,7 +143,7 @@ export default function InvoiceSettings() {
       <section style={card}>
         <h3 style={h}>Bank accounts (printed on invoices)</h3>
         <p style={{ fontSize: 13, color: ds.gray, margin: '0 0 12px' }}>
-          {regions.length ? 'Link an account to a region and invoices for that region show it automatically. The person making the invoice can still choose another. The default is used when no account matches.'
+          {regions.length ? 'Link accounts to a region (a region can have several). Invoices for that region show its first account automatically; sales reps can choose only between that region\'s accounts, while admins and managers can choose any. The default is used when no account matches.'
             : 'Add each account customers can pay into. The person making an invoice chooses which one it shows; the default is picked first.'}
         </p>
         <div style={{ display: 'grid', gap: 12 }}>
@@ -177,6 +179,8 @@ export default function InvoiceSettings() {
             : <small style={{ color: ds.gray }}>You can have up to 10 bank accounts.</small>}
         </div>
       </section>
+
+      {regions.length > 0 && <RepRegions people={people} regions={regions} onSaved={setPeople} h={h} />}
 
       <section style={card}>
         <h3 style={h}>Numbers, dates and tax</h3>
@@ -299,6 +303,50 @@ export default function InvoiceSettings() {
         {msg && <span role="status" style={{ color: msg.ok ? ds.green : ds.red, fontSize: 14 }}>{msg.text}</span>}
       </div>
     </div>
+  )
+}
+
+// REVISE-1: each sales rep's home region. Saved on its own (not with the rest of the settings).
+function RepRegions({ people, regions, onSaved, h }) {
+  const reps = people.filter((p) => !p.manager)
+  const [pick, setPick] = useState({})
+  const [busy, setBusy] = useState(false)
+  const [note, setNote] = useState(null)   // { ok, text }
+  const valueOf = (p) => (p.id in pick ? pick[p.id] : (p.region || ''))
+  const changed = reps.filter((p) => valueOf(p) !== (p.region || ''))
+  const save = async () => {
+    setBusy(true); setNote(null)
+    try {
+      const out = await saveRepRegions(Object.fromEntries(changed.map((p) => [p.id, valueOf(p) || null])))
+      onSaved(people.map((p) => (p.id in (out || {}) ? { ...p, region: out[p.id] } : p)))
+      setPick({}); setNote({ ok: true, text: 'Regions saved.' })
+    } catch (err) { setNote({ ok: false, text: apiError(err) }) } finally { setBusy(false) }
+  }
+  return (
+    <section style={card}>
+      <h3 style={h}>Sales reps' regions</h3>
+      <p style={{ fontSize: 13, color: ds.gray, margin: '0 0 12px' }}>
+        A rep with a region always makes invoices for it and chooses only from its bank accounts. Leave it blank to let them pick the region on each invoice.
+      </p>
+      {!reps.length && <small style={{ color: ds.gray }}>No sales reps yet.</small>}
+      <div style={{ display: 'grid', gap: 8 }}>
+        {reps.map((p) => (
+          <div key={p.id} style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 10, alignItems: 'center' }}>
+            <label htmlFor={`rr-${p.id}`} style={{ fontSize: 14, color: ds.dark, overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</label>
+            <select id={`rr-${p.id}`} style={inp} value={valueOf(p)} onChange={(e) => setPick((m) => ({ ...m, [p.id]: e.target.value }))}>
+              <option value="">No region (picks on each invoice)</option>
+              {regions.map((r) => <option key={r} value={r}>{r}</option>)}
+            </select>
+          </div>
+        ))}
+      </div>
+      {reps.length > 0 && (
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 12, flexWrap: 'wrap' }}>
+          <button type="button" style={disabled(btnP, busy || !changed.length)} disabled={busy || !changed.length} onClick={save}>{busy ? 'Saving…' : 'Save regions'}</button>
+          {note && <small role="status" style={{ color: note.ok ? ds.teal : ds.red }}>{note.text}</small>}
+        </div>
+      )}
+    </section>
   )
 }
 

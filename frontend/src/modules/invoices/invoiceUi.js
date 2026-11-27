@@ -38,3 +38,15 @@ export const btnP = { background: ds.teal, color: '#fff', border: 'none', border
 export const btnG = { background: '#fff', color: ds.tealDark, border: `1.5px solid ${ds.border}`, borderRadius: ds.radius.md, padding: '0 14px', minHeight: 42, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: ds.fontDm, display: 'inline-flex', alignItems: 'center', gap: 6, justifyContent: 'center' }
 export const btnDanger = { ...btnG, color: ds.red, borderColor: '#F5C2C2' }
 export const disabled = (style, off) => (off ? { ...style, opacity: 0.55, cursor: 'not-allowed' } : style)
+
+// REVISE-1: the accounts a sales rep may pick for a region: the region's own; if none, the ones linked to no region
+// (else all). Same rule as the server (invoice_service.accounts_for_region).
+export function accountsForRegion(accounts, region) {
+  const list = accounts || []
+  const want = (region || '').trim().toLowerCase()
+  if (!want) return list
+  const mine = list.filter((a) => (a.region || '').toLowerCase() === want)
+  if (mine.length) return mine
+  const free = list.filter((a) => !a.region)
+  return free.length ? free : list
+}

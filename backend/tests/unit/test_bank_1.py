@@ -58,13 +58,17 @@ def test_old_single_account_shows_as_default():
     ([{**ACCTS[0], "account_number": "12ab"}], "6 to 20 digits"),
     ([{**ACCTS[0], "bank_name": " "}], "bank name"),
     ([{**ACCTS[0], "region": "Kano"}], "regions"),
-    ([ACCTS[0], {**ACCTS[1], "region": "Lagos Sales"}], "already linked"),
     ([ACCTS[0]] * 11, "up to 10"),
 ])
 def test_bad_accounts_are_refused(bad, msg):
     with pytest.raises(inv.InvoiceError) as e:
         inv.save_settings(_db(), ORG, {"bank_accounts": bad})
     assert msg in e.value.message
+
+
+def test_a_region_can_have_several_accounts():   # REVISE-1 (was: one account per region)
+    s = inv.save_settings(_db(), ORG, {"bank_accounts": [ACCTS[0], {**ACCTS[1], "region": "Lagos Sales"}]})
+    assert [a["region"] for a in s["bank_accounts"]] == ["Lagos Sales", "Lagos Sales"]
 
 
 def test_one_default_only_and_first_when_none():
